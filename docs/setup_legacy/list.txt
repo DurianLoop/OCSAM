@@ -1,0 +1,13 @@
+# 装机清单
+装机软件清单：
+远程控制：向日葵/ToDesk
+VPN：下你们自己的
+IDE：Visual studio Code
+agent：codex
+通讯：微信、腾讯文档
+代码：Github Desktop
+医疗图像读图：ITK-SNAP(https://sourceforge.net/projects/itk-snap/files/itk-snap/3.4.0/), 3D_slicer(https://www.google.com/search?client=firefox-b-d&q=3D+slicer)
+
+代码所需依赖：见requirements.txt
+代码环境选择1 - docker：用docker的话下载Docker Desktop（强调：不要下最新版！学校电脑可能不兼容）。然后跟着https://github.com/zhennongchen/Standard_dockers里的XJTLU_docker_installation_guidance一步步安装，可以直接装docker_pytorch_torch2.10那个文件夹中的。一直装到你能使用docker为止再离开【中间很可能需要lab老师给权限】
+代码环境选择2：virtual environment，按你们的经验来。

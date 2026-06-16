@@ -1,0 +1,54 @@
+.nfs*
+
+# compilation and distribution
+__pycache__
+_ext
+*.pyc
+*.pyd
+*.so
+*.dll
+*.egg-info/
+build/
+dist/
+wheels/
+
+# pytorch/python/numpy formats
+*.pth
+#*.pkl
+*.npy
+*.ts
+model_ts*.txt
+
+# local checkpoints, medical datasets, and generated evaluation outputs
+models/
+UI/*.pth
+datasets/IDRID/
+datasets/MonuSeg/
+IDRID/
+MonuSeg/
+ddr_datasets/
+demo_outputs/
+debug_figure/
+vis/
+output/debug/
+output/visualization/
+DINOv2_Metric/**/*.csv
+DINOv2_Metric/**/*.png
+DINOv2_Metric/**/*.pdf
+
+# onnx models
+*.onnx
+
+# ipython/jupyter notebooks
+**/.ipynb_checkpoints/
+
+# Editor temporaries
+*.swn
+*.swo
+*.swp
+*~
+
+# editor settings
+.idea
+.vscode
+_darcs

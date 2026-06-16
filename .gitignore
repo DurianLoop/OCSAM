@@ -1,0 +1,50 @@
+.cache/
+.agents/
+.codex/
+
+# Local Python/conda environments
+conda_envs/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+
+# Large local model weights and checkpoints
+assets/checkpoints/
+code/models/
+Matcher/models/
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+
+# Local medical datasets
+code/datasets/IDRID/
+code/datasets/MonuSeg/
+code/IDRID/
+code/MonuSeg/
+code/ddr_datasets/
+Matcher/datasets/
+Matcher/IDRID/
+Matcher/MonuSeg/
+Matcher/ddr_datasets/
+
+# Generated demo/evaluation outputs
+code/demo_outputs/
+code/debug_figure/
+code/vis/
+code/output/
+Matcher/demo_outputs/
+Matcher/debug_figure/
+Matcher/vis/
+Matcher/output/
+
+# Notebook/editor/system clutter
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+
+# Local Git metadata backups created while flattening nested repositories
+.cache/git_backups/
