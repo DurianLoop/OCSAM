@@ -1,0 +1,365 @@
+                                             PP-SAM: Perturbed Prompts for Robust Adaptation of Segment Anything
+                                                                Model for Polyp Segmentation
+
+                                               Md Mostafijur Rahman^1 , Mustafa Munir^1 , Debesh Jha^2 , Ulas Bagci^2 , and Radu Marculescu^1
+                                                                          ^1
+                                                                             The University of Texas at Austin
+                                                                                ^2
+                                                                                   Northwestern University
+arXiv:2405.16740v1 [cs.CV] 27 May 2024
+
+
+
+
+                                                                        {mostafijur.rahman, mmunir, radum}@utexas.edu
+                                                                           {debesh.jha, ulas.bagci}@northwestern.edu
+
+
+
+                                                                Abstract                               11, 12] or fine-tuning [9, 17] potential for polyp segmen-
+                                                                                                       tation. However, when SAM is fine-tuned using data ex-
+                                             The Segment Anything Model (SAM), originally de-          clusively from one imaging center/clinic, fine-tuning it for
+                                         signed for general-purpose segmentation tasks, has been       different centers/clinics with potentially out-of-distribution
+                                         used recently for polyp segmentation. Nonetheless, fine-      data is crucial due to its limited generalizability. Yet, anno-
+                                         tuning SAM with data from new imaging centers or clin-        tating datasets for new centers poses challenges in terms of
+                                         ics poses significant challenges. This is because this ne-    time, resources, and cost.
+                                         cessitates the creation of an expensive and time-intensive        Additionally, the complexity is compounded by the pos-
+                                         annotated dataset, along with the potential for variability   sibility of user prompts being imprecise during inference.
+                                         in user prompts during inference. To address these issues,    Since the prompts used by endoscopists are subjective, there
+                                         we propose a robust fine-tuning technique, PP-SAM, that       is a chance of variability from the human factors such as fa-
+                                         allows SAM to adapt to the polyp segmentation task with       tigue, experience, and number of cases examined in the day.
+                                         limited images. To this end, we utilize variable perturbed    SAM performs poorly when the endoscopists use a larger
+                                         bounding box prompts (BBP) to enrich the learning context     (inaccurate) bounding box prompt than the region of inter-
+                                         and enhance the model’s robustness to BBP perturbations       est of the polyp. Therefore, it is critical to develop a robust
+                                         during inference. Rigorous experiments on polyp segmen-       adaptation method that is resilient to inaccurate (perturbed)
+                                         tation benchmarks reveal that our variable BBP perturba-      bounding box prompts.
+                                         tion significantly improves model resilience. Notably, on
+                                                                                                          To address these issues, we investigate fine-tuning of
+                                         Kvasir, 1-shot fine-tuning boosts the DICE score by 20%
+                                                                                                       SAM, namely PP-SAM, for polyp segmentation with vari-
+                                         and 37% with 50 and 100-pixel BBP perturbations during
+                                                                                                       able bounding box prompt perturbations. By fine-tuning
+                                         inference, respectively. Moreover, our experiments show
+                                                                                                       SAM on colonoscopy images, we demonstrate its superior
+                                         that 1-shot, 5-shot, and 10-shot PP-SAM with 50-pixel per-
+                                                                                                       performance for polyp segmentation, showcasing its po-
+                                         turbations during inference outperform a recent state-of-
+                                                                                                       tential to enhance colorectal cancer screening and diagno-
+                                         the-art (SOTA) polyp segmentation method by 26%, 7%,
+                                                                                                       sis across diverse clinical settings. Our approach stream-
+                                         and 5% DICE scores, respectively. Our results motivate
+                                                                                                       lines the time, cost, and resources required for data annota-
+                                         the broader applicability of our PP-SAM for other medical
+                                                                                                       tion during fine-tuning, making it effective for multi-center
+                                         imaging tasks with limited samples. Our implementation is
+                                                                                                       polyp segmentation. Our main contributions are as follows:
+                                         available at https://github.com/SLDGroup/PP-SAM.
+                                                                                                       1. PP-SAM framework: We introduce PP-SAM, a new
+                                                                                                          SAM-based robust adaptation framework with limited
+                                         1. Introduction                                                  data for polyp segmentation. We also explore the trans-
+                                                                                                          fer learning capabilities of different modules of SAM.
+                                         Deep learning-based algorithms [2, 6, 9, 11, 13–17] have      2. Variable prompt perturbation: We propose to use a
+                                         emerged as a promising tool for detecting precancerous le-       very simple but effective strategy, variable perturbation
+                                         sions during colonoscopy procedures. Recently, a founda-         of the bounding box prompt, during fine-tuning to make
+                                         tional model, namely the Segment Anything Model (SAM),           the model more robust to prompt perturbation.
+                                         has been introduced for general-purpose semantic segmen-      3. Robustness analysis: We conduct rigorous analyses on
+                                         tation. Several studies explore its zero-shot inference [2,      the robustness of zero-shot and few-shot SAM to bound-
+   ing box prompt perturbation during inference. Our ex-        MedSAM also outperforms existing SOTA foundation mod-
+   perimental results show that zero-shot SAM is highly         els on medical image segmentation and even outperforms
+   vulnerable to prompt perturbation, hence our proposed        some specialized models [11].
+   PP-SAM with perturbed prompt-based adaptation strat-
+   egy can significantly improve the robustness of the          2.3. Polyp segmentation
+   model during inference.                                      Colon polyps are an important precursor to colon cancer,
+   The remaining of the paper is organized as follows: Sec-     thus the correct segmentation of colon polyps can reduce
+tion 3 describes our methodology. Section 2 explains rele-      misdiagnosis of colon cancer [9]. Many methods have been
+vant prior work. Section 4 presents the experimental setup      proposed for polyp segmentation, but the limited amount of
+and results. Finally, Section 5 concludes the paper.            colonoscopy images remains a major challenge. A method
+                                                                like SAM that can perform segmentation without a large
+2. Related Work                                                 amount of data looks thus very appealing.
+                                                                   In [9], the authors propose Polyp-SAM, which is a fine-
+In this section, we describe the related work in three parts:   tuned version of the SAM model for polyp segmentation.
+the Segment Anything Model (SAM), SAM in medical im-            Polyp-SAM achieves SOTA or near SOTA performance on
+age segmentation, and SAM in polyp segmentation.                five datasets, thus showing the effectiveness of SAM in
+                                                                medical image segmentation tasks. In [2], the authors use
+2.1. Segment anything model                                     a text prompt-aided SAM called Polyp-SAM++, which is
+In [8], the authors of SAM propose a foundation model by        shown to be more robust and precise compared to the un-
+introducing a promptable segmentation task, a segmentation      prompted SAM [2, 11]. The prior work on SAM mod-
+model to allow for zero-shot transfer to a variety of tasks     els (SAM models in medical imaging and SAM models in
+and a new dataset for image segmentation. The idea for          polyp segmentation), builds upon the original SAM model
+SAM comes from the natural language processing (NLP)            and uses different methods to achieve better segmentation
+domain, where large language models (LLMs) pre-trained          results than the original SAM for more specialized tasks
+on large datasets have shown strong zero-shot performance       where pre-training on natural images may not be enough
+[4]. These types of large models have shown the ability         to achieve SOTA results. However, none of these methods
+to generalize to tasks and datasets they have not seen dur-     considers the real-life inherent inaccuracy (perturbation) in
+ing training [3, 8]. The work of SAM [8] shows that this        prompts while adapting SAM for polyp segmentation.
+same type of training on extremely large-scale datasets can
+be translated to the computer vision domain to segment a        3. Methodology
+variety of different image types, including medical images.
+                                                                Figure 1 shows our proposed PP-SAM framework. First,
+2.2. SAM in medical image segmentation                          we take a small labeled dataset of images as input. Then, we
+                                                                extract the bounding box from the corresponding ground-
+Despite the strong performance of SAM, it fails to per-         truth (GT) segmentation mask. Then, we perturb the bound-
+form optimally on out-of-distribution domains, such as          ing box using our variable bounding box prompt perturba-
+medical imaging due to its pre-training on natural images       tion method. Finally, we use this dataset with GT masks
+[11, 12, 17]. By evaluating SAM on a collection of 19 med-      and perturbed bounding box prompts to fine-tune SAM [8].
+ical imaging datasets from different anatomies and modali-      The main components are described next.
+ties [12], the authors of [12] perform an experimental study
+to determine the potential of SAM to be applied in medi-        3.1. Prompts
+cal imaging. The authors find that the performance of SAM       In this subsection, we describe our proposed variable per-
+based on single prompts is highly dependent on the dataset      turbed prompts for fine-tuning, and perturbation used dur-
+and the task, thus concluding that SAM shows impres-            ing inference for robustness analysis.
+sive zero-shot segmentation performance for some medical
+imaging datasets while performing poorly on others [12].
+                                                                3.1.1   Variable perturbed prompts for fine-tuning
+    Auto-SAM [17] replaces SAM’s conditioning on either a
+mask or a set of points with an encoder that operates on the    While SAM can utilize various prompts, we advocate for
+same input image. The introduction of this encoder allows       adapting the bounding box prompt due to its simplicity. Our
+for Auto-SAM [17] to obtain state-of-the-art (SOTA) re-         approach involves fine-tuning SAM for polyp segmentation
+sults on multiple medical image segmentation benchmarks.        using a variable (perturbed) bounding box prompt. Our
+MedSAM [11] goes in another direction by designing a            variable perturbation extends the bounding box randomly
+foundation model for medical image segmentation through         from 0 to n pixels in all four directions, as in Figure 1
+using a curated dataset with over one million images [11].      box (2). When we fine-tune SAM with this strategy, the
+Figure 1. Few-shot fine-tuning pipeline. Here, ‘no perturbation’ represents the bounding box extracted from the original ground truth (GT)
+masks; ‘variable perturbations’ means extending the bounding box on each side separately.
+
+
+variation in perturbation enhances model robustness against             intersection-over-union (IoU) score regression head.
+prompt perturbations during real-life inference.
+                                                                        3.3. Transfer learning
+3.1.2   Prompts during inference                                        We study the transfer learning ability of different compo-
+To assess the robustness of our method, we evaluate the per-            nents of SAM: image encoder, prompt encoder, and mask
+formance of the models with different levels (0, 5, 10, ..., 95,        decoder. The experimental results in Figure 2 reveal that
+and 100 pixels) of fixed perturbations in the bounding box              fine-tuning image and prompt encoders suffice; thus, we
+(on all sides) during inference. For instance, the 10-pixel             keep the mask decoder frozen in all our experiments.
+perturbation during inference means extending the bound-
+ing box by 10 pixels on all sides.                                      3.4. Limited data settings
+3.2. SAM architecture                                                   In this work, we randomly select different small datasets
+                                                                        (Figure 1 box (1)) to fine-tune SAM for polyp segmenta-
+SAM [8] is a foundational image segmentation model that                 tion. Specifically, we fine-tune PP-SAM with k randomly
+responds to various prompts (e.g., point, box, mask). While             selected images, where k = 1, 5, 10, 20, 50, and 100, as
+trained on the extensive SA-1B dataset, SAM exhibits ro-                well as the full dataset.
+bust zero-shot generalization. SAM comprises three key
+components: image encoder, mask decoder, and prompt en-
+coder. These components are described next.                             4. Experiments
+                                                                        In this section, we describe the datasets, evaluation metrics,
+3.2.1   Image encoder
+                                                                        implementation details, and experimental results.
+The SAM image encoder (Figure 1 box (3)) is based on
+a vision transformer (ViT) backbone [5]; this takes high-               4.1. Datasets
+resolution (i.e., 1024 × 1024) images as input and produces
+                                                                        We use the Kvasir [7] dataset to fine-tune SAM for few-shot
+a 16× downsampled image embedding (i.e., 64 × 64).
+                                                                        polyp segmentation. This dataset contains 1,000 polyp im-
+                                                                        ages. Following [6], we adopt the same 900 images from
+3.2.2   Prompt encoder                                                  Kvasir as the training set and the remaining 100 images
+The SAM prompt encoder (Figure 1 box (4)) utilizes two                  as the testset. To assess the generalizability of our pro-
+sets of prompts: sparse (bounding boxes, points, text) and              posed decoder, we use three unseen test datasets, namely
+dense (masks) prompts. Also, it uses both positional encod-             ClinicDB [1], EndoScene [19], and ColonDB [18]. Clin-
+ing and learned embeddings to encode points and boxes.                  icDB consists of 612 images extracted from 31 colonoscopy
+                                                                        videos. EndoScene and ColonDB consist of 60 and 379 im-
+                                                                        ages, respectively. The images of our three unseen testsets
+3.2.3   Mask decoder
+                                                                        significantly differ from trainset as they are collected from
+SAM utilizes a lightweight mask decoder (Figure 1 box                   separate hospitals/clinics/centers with different acquisition
+(5)) which consists of a dynamic mask prediction and an                 devices and procedures.
+4.2. Evaluation metrics
+We use DICE similarity scores as evaluation metrics in all
+our experiments. The DICE similarity score measures the
+overlap accuracy which is suitable for binary segmenta-
+tion with imbalanced data. As polyp segmentation is a bi-
+nary segmentation task with imbalanced polyp (lesion) and
+background regions, we favor the DICE score for assess-
+ing the performance of our PP-SAM on polyp segmenta-
+tion, where the precise delineation of anatomical structures
+is crucial for diagnosis and treatment planning. The DICE
+score DICE(Y, P ) of a ground truth mask Y and a pre-
+dicted mask P is defined in Equation 1:
+
+            \label {eq:dice} DICE(Y, P) = \frac {2 \times \lvert Y \cap P \rvert }{\lvert Y \rvert + \lvert P \rvert }\times 100    (1)   Figure 2. Transfer learning abilities of different modules of SAM
+                                                                                                                                          on the Kvasir [7] testset. As shown, freezing only the mask de-
+4.3. Implementation details                                                                                                               coder produces the best results.
+We implement and fine-tune our PP-SAM using Pytorch
+1.11.0, operating on a single NVIDIA RTX A6000 GPU
+with 48GB of memory. In our experiments, we set the max-
+imum length for variable bounding box prompt perturba-
+tion, n = 50. We resize the images to 1024 × 1024 and
+re-scale the bounding box to match the new image resolu-
+tion. We use the AdamW optimizer [10] with both a learn-
+ing rate and weight decay rate of 0.0001. We do not use any
+data augmentations and learning rate schedulers.
+   During fine-tuning, we optimize the combined weighted
+CrossEntropy and mean intersection over union (mIoU) loss
+function. SAM with ViT-B (SAM-B) is fine-tuned for 100
+epochs with a batch size of 1 unless otherwise mentioned;
+we save the best model based on the DICE score with an in-
+ference bounding box perturbation of 30 pixels on all sides.
+We report the average DICE similarity scores over five runs                                                                               Figure 3. Comparison of different levels of bounding box per-
+to evaluate our fine-tuning performance. We calculate the                                                                                 turbations during training, on the Kvasir testset. As shown, our
+DICE scores using the original resolution of the test images.                                                                             variable prompt perturbation produces the overall best results.
+
+4.4. Results
+                                                                                                                                          with a limited dataset. Conversely, keeping the image en-
+To evaluate the performance and robustness of our proposed
+                                                                                                                                          coder frozen exposes the model to increased vulnerability
+PP-SAM, we conduct six different sets of experiments as
+                                                                                                                                          to prompt perturbation. An even more significant decline in
+described below.
+                                                                                                                                          performance is observed when both the image and mask de-
+                                                                                                                                          coders are frozen, underscoring their collective importance
+4.4.1   Transfer learning capabilities of different mod-                                                                                  in model adaptability. From these insights, we firmly advo-
+        ules of SAM                                                                                                                       cate for freezing only the mask decoder and selectively fine-
+We empirically explore SAM’s transfer learning capabili-                                                                                  tuning the image and prompt encoders to optimize transfer
+ties across four distinct experimental configurations. The                                                                                learning efficiency and model robustness.
+outcomes of these investigations, as it pertains to the impact
+of bounding box prompt perturbations during inference, are                                                                                4.4.2   Effectiveness of variable bounding box prompt
+illustrated in Figure 2. In our analysis, the strategic freez-                                                                                    perturbations during fine-tuning
+ing of the mask decoder (i.e., exclusively fine-tuning the
+image and prompt encoders) emerges as the most effective                                                                                  In Figure 3, we illustrate the impact of different bound-
+approach, yielding the highest DICE scores. This supe-                                                                                    ing box prompt perturbations during fine-tuning. We assess
+rior performance likely stems from the avoidance of over-                                                                                 DICE scores for perturbations of 0 (no perturbation), 10,
+fitting, which can occur when fine-tuning the mask decoder                                                                                20, 30, 40, 50, and random perturbations within 0-50 pixels
+Figure 4. Experimental results on Kvasir testset. All models are   Figure 5. Experimental results of unseen ClinicDB testset. We uti-
+trained using the randomly sampled images from the Kvasir train-   lize the models trained using the randomly sampled images from
+set. We use our variable perturbed bounding box (in the range of   the Kvasir trainset for these experiments.
+0 to 50) during training. Also, we keep the mask decoder frozen
+during these experiments.
+
+
+
+on all sides of the original bounding box prompt. The re-
+sults reveal that the models without prompt perturbations
+during training are susceptible to larger inference pertur-
+bations. Resilience to these perturbations improves with
+larger training perturbations. However, models fine-tuned
+with variable perturbations (0-50 pixels) demonstrate better
+overall performance for both small and large inference per-
+turbations. We believe that variable perturbations on differ-
+ent sides during training enhance model robustness against
+various levels of bounding box prompt perturbations.
+                                                                   Figure 6. Experimental results on unseen EndoScene testset. We
+                                                                   utilize the models trained using the randomly sampled images
+                                                                   from the Kvasir trainset for these experiments.
+4.4.3   Learning ability of PP-SAM for polyp segmenta-
+        tion on Kvasir dataset
+                                                                   4.4.4   Generalizability of PP-SAM for unseen polyp
+                                                                           segmentation
+In Figure 4, we present the outcomes of applying both
+zero-shot and few-shot fine-tuning techniques to the Kvasir        Figure 5 displays evaluation results of unseen polyp
+dataset during testing. As depicted in this figure, there is       segmentation on ClinicDB testset, where our fine-tuning
+a discernible decrease in the DICE scores as the magni-            method shows a significant performance improvement, i.e.,
+tude of bounding box perturbations increases during infer-         24% and 43.5% DICE score increase over zero-shot for 1-
+ence, a trend that aligns with our expectations. Notably,          shot and 50-shot, respectively. In Figure 6, we can see
+our fine-tuned models demonstrate enhanced durability in           a similar improvement in the DICE scores for the unseen
+the face of these prompt perturbations throughout the infer-       polyp segmentation on EndoScene dataset. More specifi-
+ence process. The implementation of our random 1-shot and          cally, our 1-shot and 50-shot fine-tuning improves the DICE
+50-shot fine-tuning with variable perturbed bounding box           scores by 19% and 50%, respectively, over zero-shot infer-
+prompts significantly enhances model robustness, boosting          ence with a 100-pixel perturbation. Figure 7 shows the re-
+the DICE scores by 37% and 60%, respectively, over zero-           sults on the unseen ColonDB dataset, where our 1-shot and
+shot with 100-pixel perturbations on all sides. We can also        50-shot fine-tuning achieve 27% and 45% improvements,
+conclude that the DICE scores improve from 1-shot to 50-           respectively, over zero-shot inference with 100-pixel per-
+shot, with minimal difference beyond 50-shot.                      turbations during inference. We observe minimal improve-
+Figure 7. Experimental results on unseen ColonDB testset. We uti-
+lize the models trained using the randomly sampled images from      Figure 9. Performance comparison with a SOTA method on the
+the Kvasir trainset for these experiments.                          Kvasir testset. We utilize the models trained using randomly
+                                                                    selected images from the Kvasir trainset for these experiments.
+                                                                    SAM-B 25-pixel and SAM-B 50-pixel are the results of 25 and 50-
+                                                                    pixel bounding box perturbations on all sides, respectively, during
+                                                                    inference.
+
+
+                                                                    4.4.6   Performance comparison with SOTA
+                                                                    We report the results of our fine-tuned SAM and a SOTA
+                                                                    method, PVT-CASCADE [13] in Figure 9. We can see
+                                                                    from the bar plot that our PP-SAM with variable bound-
+                                                                    ing box perturbations during fine-tuning significantly out-
+                                                                    performs PVT-CASCADE for up to 50 shots (i.e., PP-SAM
+                                                                    requires less labeled data to achieve closer to optimal per-
+                                                                    formance). More precisely, 1-shot (74.5%), 5-shot (77%),
+                                                                    and 10-shot (81.6%) fine-tuning of SAM using our method
+Figure 8. Experimental results of SAM’s scalability with ViT en-    achieves 26%, 7%, and 5% better DICE scores than PVT-
+coders on the Kvasir testset. We utilize the models trained using   CASCADE with 50-pixel bounding box perturbations dur-
+the full Kvasir trainset for these experiments.                     ing inference. Our method achieves further better perfor-
+                                                                    mance (i.e., 32%, 11%, and 9% improvement for 1-shot, 5-
+                                                                    shot, and 10-shot, respectively) with 25-pixel perturbations.
+ments in DICE scores after 20 to 50-shot fine-tuning for all        Therefore, our PP-SAM is preferable to non-prompt-based
+the unseen testsets.                                                approaches for polyp segmentation involving limited pre-
+                                                                    cisely labeled ground truth segmentation masks.
+
+                                                                    5. Conclusions
+4.4.5   Scalability of SAM with ViT encoders
+                                                                    In this paper, we have presented PP-SAM, an innovative
+Figure 8 reports the zero-shot and fine-tuning results of           fine-tuning approach for SAM in polyp segmentation. We
+SAM models with ViT-B (Base) and ViT-L (Large) image                introduce a novel concept of variable perturbations in
+encoders. From this figure, we can conclude that SAM with           bounding box prompts during the training phase, which is
+ViT-L surpasses ViT-B in zero-shot polyp segmentation.              aimed at improving the model’s robustness against varia-
+However, the fine-tuned models with both ViT encoders               tions and inconsistencies in real-world prompt scenarios.
+show similar performance. Hence, these results could be                The capabilities of PP-SAM have been demonstrated to
+used to argue the need for careful consideration when de-           be substantially superior, both in terms of performance en-
+ploying models in real-world scenarios, where perturbations         hancements and in maintaining resilience to prompt per-
+in prompts may occur, and to stress the importance of model         turbations, especially when compared to the conventional
+robustness to such changes.                                         zero-shot SAM inference methods on publicly available
+polyp datasets. Our experiments indicate that fine-tuning             [9] Yuheng Li, Mingzhe Hu, and Xiaofeng Yang. Polyp-
+solely the image and prompt encoder (while freezing the                   SAM: Transfer SAM for polyp segmentation. arXiv preprint
+mask decoder) yields superior results.                                    arXiv:2305.00293, 2023. 1, 2
+   While PP-SAM currently focuses on binary segmenta-                [10] Ilya Loshchilov and Frank Hutter. Decoupled weight decay
+tion and a single bounding box, future work aims to address               regularization. arXiv preprint arXiv:1711.05101, 2017. 4
+these limitations. Nonetheless, even in its current state, PP-       [11] Jun Ma and Bo Wang. Segment anything in medical images.
+                                                                          arXiv preprint arXiv:2304.12306, 2023. 1, 2
+SAM simplifies SAM adoption for new centers/hospitals/-
+                                                                     [12] Maciej A Mazurowski, Haoyu Dong, Hanxue Gu, Jichen
+clinics, by requiring minimal annotation effort.
+                                                                          Yang, Nicholas Konz, and Yixin Zhang. Segment anything
+                                                                          model for medical image analysis: an experimental study.
+6. Acknowledgements                                                       Medical Image Analysis, 89:102918, 2023. 1, 2
+                                                                     [13] Md Mostafijur Rahman and Radu Marculescu. Medical
+This work is supported in part by the NSF                                 image segmentation via cascaded attention decoding. In
+grant CNS 2007284, and in part by the iMAG-                               IEEE/CVF Winter Conf. Appl. Comput. Vis., pages 6222–
+iNE     Consortium    (https://imagine.utexas.edu/).                      6231, 2023. 1, 6
+                                                                     [14] Md Mostafijur Rahman and Radu Marculescu. G-cascade:
+                                                                          Efficient cascaded graph convolutional decoding for 2d med-
+References                                                                ical image segmentation. arXiv preprint arXiv:2310.16175,
+                                                                          2023.
+ [1] Jorge Bernal, F Javier Sánchez, Gloria Fernández-
+                                                                     [15] Md Mostafijur Rahman and Radu Marculescu. Multi-scale
+     Esparrach, Debora Gil, Cristina Rodrı́guez, and Fernando
+                                                                          hierarchical vision transformer with cascaded attention de-
+     Vilariño. Wm-dova maps for accurate polyp highlighting in
+                                                                          coding for medical image segmentation. In Medical Imaging
+     colonoscopy: Validation vs. saliency maps from physicians.
+                                                                          with Deep Learning, pages 1526–1544. PMLR, 2024.
+     Comput. Med. Imaging Graph., 43:99–111, 2015. 3
+                                                                     [16] Md Mostafijur Rahman, Mustafa Munir, and Radu Mar-
+ [2] Risab Biswas. Polyp-SAM++: Can A Text Guided SAM                     culescu. Emcad: Efficient multi-scale convolutional atten-
+     Perform Better for Polyp Segmentation? arXiv preprint                tion decoding for medical image segmentation. In IEEE
+     arXiv:2308.06623, 2023. 1, 2                                         Conf. Comput. Vis. Pattern Recog., 2024.
+ [3] Rishi Bommasani, Drew A Hudson, Ehsan Adeli, Russ Alt-          [17] Tal Shaharabany, Aviad Dahan, Raja Giryes, and Lior Wolf.
+     man, Simran Arora, Sydney von Arx, Michael S Bernstein,              Autosam: Adapting sam to medical images by overloading
+     Jeannette Bohg, Antoine Bosselut, Emma Brunskill, et al.             the prompt encoder. arXiv preprint arXiv:2306.06370, 2023.
+     On the opportunities and risks of foundation models. arXiv           1, 2
+     preprint arXiv:2108.07258, 2021. 2                              [18] Nima Tajbakhsh, Suryakanth R Gurudu, and Jianming
+ [4] Tom Brown, Benjamin Mann, Nick Ryder, Melanie Sub-                   Liang. Automated polyp detection in colonoscopy videos us-
+     biah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakan-            ing shape and context information. IEEE Trans. Med. Imag-
+     tan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Lan-         ing, 35(2):630–644, 2015. 3
+     guage models are few-shot learners. Advances in neural in-      [19] David Vázquez, Jorge Bernal, F Javier Sánchez, Gloria
+     formation processing systems, 33:1877–1901, 2020. 2                  Fernández-Esparrach, Antonio M López, Adriana Romero,
+ [5] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,               Michal Drozdzal, and Aaron Courville. A benchmark for
+     Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,                  endoluminal scene segmentation of colonoscopy images. J.
+     Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-             Healthc. Eng., 2017, 2017. 3
+     vain Gelly, et al. An image is worth 16x16 words: Trans-
+     formers for image recognition at scale. arXiv preprint
+     arXiv:2010.11929, 2020. 3
+ [6] Deng-Ping Fan, Ge-Peng Ji, Tao Zhou, Geng Chen, Huazhu
+     Fu, Jianbing Shen, and Ling Shao. Pranet: Parallel re-
+     verse attention network for polyp segmentation. In Int. Conf.
+     Med. Image Comput. Comput. Assist. Interv., pages 263–273.
+     Springer, 2020. 1, 3
+ [7] Debesh Jha, Pia H Smedsrud, Michael A Riegler, Pål
+     Halvorsen, Thomas de Lange, Dag Johansen, and Håvard D
+     Johansen. Kvasir-seg: A segmented polyp dataset. In Int.
+     Conf. Multimedia Model., pages 451–462. Springer, 2020.
+     3, 4
+ [8] Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao,
+     Chloe Rolland, Laura Gustafson, Tete Xiao, Spencer White-
+     head, Alexander C Berg, Wan-Yen Lo, et al. Segment any-
+     thing. arXiv preprint arXiv:2304.02643, 2023. 2, 3
+

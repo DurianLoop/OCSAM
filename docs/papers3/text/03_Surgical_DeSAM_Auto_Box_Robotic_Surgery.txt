@@ -1,0 +1,370 @@
+                                         Surgical-DeSAM: Decoupling SAM for Instrument
+                                                  Segmentation in Robotic Surgery
+                                             Yuyang Sheng1,2 , Sophia Bano1,2 , Matthew J. Clarkson1 ,
+                                                                Mobarakol Islam1
+                                          1 Wellcome/EPSRC Centre for Interventional and Surgical Sciences
+
+                                             (WEISS) and Department of Medical Physics and Biomedical
+                                                  Engineering, University College London, London, UK.
+arXiv:2404.14040v1 [cs.CV] 22 Apr 2024
+
+
+
+
+                                         2 Dept. of Computer Science, University College London, London, UK.
+
+
+
+
+                                                Contributing authors: yuyang.sheng.22@alumni.ucl.ac.uk;
+                                                     sophia.bano@ucl.ac.uk; m.clarkson@ucl.ac.uk;
+                                                              mobarakol.islam@ucl.ac.uk;
+
+
+                                                                              Abstract
+                                          Purpose: The recent Segment Anything Model (SAM) has demonstrated
+                                          impressive performance with point, text or bounding box prompts, in various
+                                          applications. However, in safety-critical surgical tasks, prompting is not possible
+                                          due to (i) the lack of per-frame prompts for supervised learning, (ii) it is unreal-
+                                          istic to prompt frame-by-frame in a real-time tracking application, and (iii) it is
+                                          expensive to annotate prompts for offline applications.
+                                          Methods: We develop Surgical-DeSAM to generate automatic bounding box
+                                          prompts for decoupling SAM to obtain instrument segmentation in real-time
+                                          robotic surgery. We utilise a commonly used detection architecture, DETR,
+                                          and fine-tuned it to obtain bounding box prompt for the instruments. We then
+                                          empolyed decoupling SAM (DeSAM) by replacing the image encoder with DETR
+                                          encoder and fine-tune prompt encoder and mask decoder to obtain instance seg-
+                                          mentation for the surgical instruments. To improve detection performance, we
+                                          adopted the Swin-transformer to better feature representation.
+                                          Results: The proposed method has been validated on two publicly available
+                                          datasets from the MICCAI surgical instruments segmentation challenge EndoVis
+                                          2017 and 2018. The performance of our method is also compared with SOTA
+                                          instrument segmentation methods and demonstrated significant improvements
+                                          with dice metrics of 89.62 and 90.70 for the EndoVis 2017 and 2018.
+
+
+
+
+                                                                                   1
+     Conclusion: Our extensive experiments and validations demonstrate that
+     Surgical-DeSAM enables real-time instrument segmentation without any addi-
+     tional prompting and outperforms other SOTA segmentation methods.
+
+     Keywords: Instrument Segmentation, SAM, DETR, Robotic Surgery
+
+
+
+
+1 Introduction
+Robot-assist surgery is gaining increasing attention in the research field of intelligent
+robots. Some existing works apply deep learning techniques to realize instance seg-
+mentation for surgical instruments. While these models have significantly advanced
+instance segmentation performance on surgical datasets, they have yet to fully har-
+ness the capabilities of either the most recent segmentation models or the advanced
+object detection model, which presents an opportunity for further refinement and
+enhancement. The well-known segmentation foundation model, SAM (Segment Any-
+thing Model) [1], and adaptations of SAM in medical image segmentation and surgical
+instrument segmentation [2] have shown great promise in semantic segmentation. How-
+ever, they cannot produce object label segmentation, and they require interactive
+prompting during the deployment period, which is not realistic.
+    In this work, we (i) propose Surgical-DeSAM to generate automatic bounding box
+prompting for a decoupling SAM; (ii) design Swin-DETR by replacing ResNet with
+Swin-transformer as image feature extractor of the DETR [3]; (iii) decouple SAM
+(DeSAM) by replacing SAM’s image encoder with DETR’s encoder; (iv) validate on
+two publicly available surgical instrument segmentation datasets of EndoVis17 and
+EndoVis18; and (v) demonstrate the robustness compared to the SOTA models.
+
+
+                                                              SAM Mask Decoder
+
+                                                                  DeSAM             SAM Prompt
+                                                                                      Encoder
+
+                   Backbone                                           DETR                             Bounding
+                                                                                                        boxes
+                                                   …
+
+
+
+
+                    Swin
+                Transformer             DETR             DETR        Detection
+                                ＋
+                                       Encoder          Decoder        Head      Large Needle Driver
+                                                                                                       Large Needle Driver
+
+
+
+
+                  Positional
+                  encoding
+
+Fig. 1 Surgical-DeSAM: Swin-DETR detector and Decoupling SAM for instrument segmentation.
+
+
+
+
+                                             2
+2 Methodology
+2.1 Preliminaries
+2.1.1 SAM
+SAM [1] is the foundation model for prompt-based image segmentation and is trained
+on the largest segmentation dataset with over 1 billion high-quality masks. SAM
+forms a simple-designed transformer and composed of a heavyweight image encoder,
+a prompt encoder, and a lightweight mask decoder. The image encoder can directly
+extract image features from input images without the need for a backbone model,
+while its lightweight prompt encoder can dynamically transform any given prompt
+into an embedding vector in real-time. These embeddings are then processed by a
+decoder, generating precise segmentation masks. Prompts have various types, includ-
+ing points, boxes, text, or masks, which limit the SAM’s ability to be directly utilised
+for real-world applications like surgical instrument segmentation during surgery. It is
+unrealistic to provide a prompt for each frame of the surgical video.
+
+2.1.2 DETR
+DETR [3] is the transformer-based detector called DETR (DEtection TRansformer)
+for object detection. It consists of a CNN backbone, an encoder-decoder trans-
+former and feed-forward networks (FFNs). The CNN backbone is the commonly used
+ResNet50 [4] which extract the feature (∈ ℜd×H×W ) representation from the input
+image (∈ ℜ3×H0 ×W0 ). The output of the backbone then passes to the transformer
+encoder with spatial positional encoding and produces object queries and encoder
+memory. The decoder receives the encoder outputs and predicts the class labels and
+bounding boxes with centre coordinates, height and width using FFNs.
+
+2.2 Surgical-DeSAM
+As shown in Fig. 1, we proposed Surgical-DeSAM to automate the bounding box
+prompting by designing (i) Swin-DETR: replacing ResNet50 of the DETR with
+Swin-transformer to design an efficient model for surgical instrument detection; (ii)
+Decoupling SAM: Replacing SAM image encoder with DETR Encoder and train-
+ing end-to-end detection to prompt mask decoder of the SAM to segment surgical
+instrument.
+
+2.2.1 SWIN-DETR
+DETR utilises ResNet50 as the backbone CNN to extract the feature representation.
+However, as vision-transformer-based networks are showing much better performance
+than CNN, we replace the backbone network with a recent transformer-based archi-
+tecture of Swin-transformer [5] and from our Swin-DETR as presented in Fig. 1. The
+Swin-transformer introduces a shifted window-based hierarchical Transformer to add
+greater efficiency in the self-attention computation. It is important to note that the
+output of the Swin-transformer can be directly fed to the DETR encoder, where there
+is an additional step to collapse the spatial dimension of the ResNet50 feature into one
+
+
+                                           3
+dimension to convert it into a sequence of input for the transformer. Overall, SWIN-
+DETR consists of a Swin-transformer to extract the image feature, which is then
+passed to the transformer encoder-decoder and FFNs to obtain the final object class
+predictions and corresponding bounding boxes. More specifically, ResNet5o requires
+to convert feature map of fresnet ∈ ℜd×H×W into f ∈ ℜd×HW by collapsing the
+spatial dimensions where Swin-transformer directly produces output feature map of
+fswin ∈ ℜd×HW .
+
+2.2.2 Decoupling SAM
+As the image encoder of the SAM and the DETR are performing similar feature
+extraction, we decouple SAM by removing the image encoder and feeding the DETR
+encoder output directly to the mask decoder. This facilitates the train end-to-end
+segmentation model using DETR predicted detection prompt and a decoupled SAM
+of prompt encoder and mask decoder only. During the training period, we utilise
+both ground-truths of the detection bounding boxes and segmentation masks to train
+both models end-to-end. To calculate losses, we adopted box loss Lbox combining
+GIoU [6] and l1 losses for the detection task following DETR and dice coefficient
+similarity (DSC) loss Ldsc for the segmentation task. Therefore, total loss Losstotal
+can be formulated as:
+                               Losstotal = Lbox + Ldsc                           (1)
+
+3 Experiment and Results
+3.1 Dataset
+We utilise two benchmark robotic instrument segmentation datasets of EndoVis17 1
+and EndoVis18 2 . The dataset consists of instrument segmentation for different video
+sequences. We split the EndoVis17 first video sequences of 1 to 8 for the training
+and the remaining sequences of 8 and 9 for the testing. For EndoVis18, we split the
+sequences of 2, 5, 9, and 15 for testing and the remaining sequences for training
+followed by ISINet [7].
+
+3.2 Implementation Details
+We choose AdamW optimizer with the learning rate of 10−4 and weight decay of 0.1 to
+update the model parameters. The baseline DETR and SAM codes are adopted from
+the official repositories which utilise Pytorch framework for deep learning network.
+
+3.3 Results
+We conduct experiments on both object detection and semantic segmentation tasks
+on the robotic instrument dataset and obtain the instance segmentation performance
+of our model. Table 1 shows the comparison of performances of our model and other
+SOTA models for robotic instrument instance segmentation on Endovis 17 and Endovis
+
+ 1
+     https://endovissub2017-roboticinstrumentsegmentation.grand-challenge.org/
+ 2
+     https://endovissub2018-roboticscenesegmentation.grand-challenge.org/
+
+
+
+                                                   4
+Table 1 Performance comparison of the proposed Surgical-DeSAM model and the SOTA models
+on EndoVis 2017 and 2018. Surgical-DeSAM outperforms significantly.
+
+                                  EndoVis 2017                                   EndoVis 2018
+  Method                                                    Method
+                                  mIoU DICE                                      mIoU DICE
+  TernausNet [8]                  35.27    -              TernausNet [8]         46.22    -
+  MF-TAPNet [9]                   37.35    -              MF-TAPNet [9]          67.87    -
+  Dual-MF [10]                    45.80  56.12             Dual-MF [10]          70.41  76.93
+  TrackFormer [11]                54.91  59.72           TrackFormer [11]        71.10  77.30
+  ISINet [7]                      55.61   62.8              ISINet [7]           73.10  78.30
+  TraSeTR [12]                    60.40  65.21             TraSeTR [12]          76.20  81.10
+  S3Net (+MaskRCNN) [13]          72.54    -         S3Net (+MaskRCNN) [13]      75.81    -
+  -                                 -      -             SurgicalSAM [14]        80.33    -
+  -                                 -      -              Wang et al. [15]       71.38    -
+  Surgical-DeSAM                  82.41 89.62           Surgical-DeSAM           84.91 90.70
+
+
+18 datasets. It is obvious that our Surgical-DeSAM outperforms the other SOTA
+segmentation models on both mIoU and DICE scores. The qualitative visualisation
+of the predictions is presented in Fig. 2. There are almost no false positives with our
+model as it segments the whole instrument based on the bounding box class predicted
+by the Swin-DETR. We observed the high detection performance with Swin-DETR
+at Table 2 where predicted bounding boxes are mostly accurate with slight deviation
+of the box regions.
+
+         Image            Annotation       TernausNet         MF-TAPNet       Surgical-DeSAM
+
+
+
+
+Fig. 2 Comparison of the instance segmentation results with other models.
+
+
+
+
+3.4 Ablation Study
+To investigate the superiority of the Swin-transformer [5] backbone over ResNet50
+[4], we conducted an ablation study focusing on detection tasks alone and on both
+detection prompt and segmentation tasks. In Table 2, the first two rows demonstrate
+superior detection performance of DETR-SwinB (DETR with Swin-transformer) com-
+pared to DETR-R50 (DETR with ResNet50). Conversely, the subsequent rows com-
+pare the results of Surgical-DeSAM with ResNet50 and Swin-transformer backbones.
+It is evident that Surgical-DeSAM with a Swin-transformer backbone significantly out-
+performs Surgical-DeSAM with a ResNet50 backbone, achieving a 2.7% higher mAP
+in the detection task and a 7.1% higher DICE score in the segmentation task.
+
+
+                                                 5
+ Table 2 Comparison of DETR and our model with different backbone networks for the
+ detection and segmentation tasks.
+
+
+                                                Detection                 Segmentation
+            Method
+                               mAP@0.50:0.95     mAP@0.50    mAP@0.75     mIoU   DICE
+           DETR-R50               61.4              82.6       71.3         -      -
+         DETR-SwinB               64.6              83.4       73.1         -      -
+  Surgical-DeSAM (ResNet50)       58.9              80.6       66.9       75.2    82.5
+    Surgical-DeSAM (Swin)         61.6              83.2       71.2       82.4   89.6
+
+
+4 Discussion and Conclusion
+In this paper, we have presented a novel model architecture, Surgical-DeSAM, by
+decoupling SAM to automate the bounding box prompting for surgical instrument
+segmentation. To get better feature extraction, we replaced ResNet50 with the Swin-
+transformer for instrument detection. To automate the bounding box prompting, we
+decouple the SAM by removing the image encoder and feeding the DETR encoder
+features and predicted bounding boxes to the SAM mask decoder and prompt encoder
+to obtain the final segmentation. The experimental results demonstrate the efficiency
+of our model by comparing it with other state-of-the-art segmentation techniques for
+surgical instrument segmentation. Future work could focus on the robustness and
+reliability of the Surgical-DeSAM-based detection and segmentation tasks.
+
+5 Acknowledgements
+This work was carried during the dissertation project of Yuyang Sheng MSc in Robotics
+and Computation, Department of Computer Science, University College London. This
+work was supported in whole, or in part, by the Wellcome/EPSRC Centre for Inter-
+ventional and Surgical Sciences (WEISS) [203145/Z/16/Z] and the Engineering and
+Physical Sciences Research Council (EPSRC) [EP/W00805X/1, EP/Y01958X/1].
+
+6 Declarations
+Conflict of interest The authors declare that they have no conflict of interest.
+Ethical approval This article does not contain any studies with human participants
+or animals performed by any of the authors.
+Informed consent This articles does not contain patient data.
+Code availability The source code of this work is available at https://github.com/
+YuyangSheng/Surgical-DeSAM.
+
+References
+ [1] Kirillov, A., Mintun, E., Ravi, N., Mao, H., Rolland, C., Gustafson, L., Xiao, T.,
+     Whitehead, S., Berg, A.C., Lo, W.-Y., et al.: Segment anything. arXiv preprint
+     arXiv:2304.02643 (2023)
+
+
+
+                                            6
+ [2] Ma, J., Wang, B.: Segment anything in medical images. arXiv preprint
+     arXiv:2304.12306 (2023)
+
+ [3] Carion, N., Massa, F., Synnaeve, G., Usunier, N., Kirillov, A., Zagoruyko, S.: End-
+     to-end object detection with transformers. In: European Conference on Computer
+     Vision, pp. 213–229 (2020). Springer
+
+ [4] He, K., Zhang, X., Ren, S., Sun, J.: Deep residual learning for image recogni-
+     tion. In: Proceedings of the IEEE Conference on Computer Vision and Pattern
+     Recognition, pp. 770–778 (2016)
+
+ [5] Liu, Z., Lin, Y., Cao, Y., Hu, H., Wei, Y., Zhang, Z., Lin, S., Guo, B.: Swin trans-
+     former: Hierarchical vision transformer using shifted windows. In: Proceedings of
+     the IEEE/CVF International Conference on Computer Vision, pp. 10012–10022
+     (2021)
+
+ [6] Rezatofighi, H., Tsoi, N., Gwak, J., Sadeghian, A., Reid, I., Savarese, S.: Gener-
+     alized intersection over union: A metric and a loss for bounding box regression.
+     In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+     Recognition, pp. 658–666 (2019)
+
+ [7] González, C., Bravo-Sánchez, L., Arbelaez, P.: Isinet: an instance-based approach
+     for surgical instrument segmentation. In: Conference on Medical Image Comput-
+     ing and Computer-Assisted Intervention, pp. 595–605 (2020). Springer
+
+ [8] Iglovikov, V., Shvets, A.: Ternausnet: U-net with vgg11 encoder pre-trained on
+     imagenet for image segmentation. arXiv preprint arXiv:1801.05746 (2018)
+
+ [9] Jin, Y., Cheng, K., Dou, Q., Heng, P.-A.: Incorporating temporal prior from
+     motion flow for instrument segmentation in minimally invasive surgery video.
+     In: Medical Image Computing and Computer Assisted Intervention–MICCAI
+     2019: 22nd International Conference, Shenzhen, China, October 13–17, 2019,
+     Proceedings, Part V 22, pp. 440–448 (2019). Springer
+
+[10] Zhao, Z., Jin, Y., Gao, X., Dou, Q., Heng, P.-A.: Learning motion flows for
+     semi-supervised instrument segmentation from robotic surgical video. In: Medi-
+     cal Image Computing and Computer Assisted Intervention–MICCAI 2020: 23rd
+     International Conference, Lima, Peru, October 4–8, 2020, Proceedings, Part III
+     23, pp. 679–689 (2020). Springer
+
+[11] Meinhardt, T., Kirillov, A., Leal-Taixe, L., Feichtenhofer, C.: Trackformer: Multi-
+     object tracking with transformers. In: Proceedings of the IEEE/CVF Conference
+     on Computer Vision and Pattern Recognition, pp. 8844–8854 (2022)
+
+[12] Zhao, Z., Jin, Y., Heng, P.-A.: Trasetr: track-to-segment transformer with con-
+     trastive query for instance-level instrument segmentation in robotic surgery.
+     In: 2022 International Conference on Robotics and Automation (ICRA), pp.
+
+
+                                           7
+    11186–11193 (2022). IEEE
+
+[13] Baby, B., et al.: From forks to forceps: A new framework for instance segmentation
+     of surgical instruments. In: Proceedings of the IEEE/CVF Winter Conference on
+     Applications of Computer Vision, pp. 6191–6201 (2023)
+
+[14] Yue, W., Zhang, J., Hu, K., Xia, Y., Luo, J., Wang, Z.: Surgicalsam: Efficient class
+     promptable surgical instrument segmentation. arXiv preprint arXiv:2308.08746
+     (2023)
+
+[15] Wang, A., Islam, M., Xu, M., Zhang, Y., Ren, H.: Sam meets robotic surgery: An
+     empirical study on generalization, robustness and adaptation. In: Medical Image
+     Computing and Computer Assisted Intervention – MICCAI 2023 Workshops:
+     ISIC 2023, Care-AI 2023, MedAGI 2023, DeCaF 2023, Held in Conjunction with
+     MICCAI 2023, Vancouver, BC, Canada, October 8–12, 2023, Proceedings, pp.
+     234–244. Springer, Berlin, Heidelberg (2023)
+
+
+
+
+                                           8
+

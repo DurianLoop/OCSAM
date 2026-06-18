@@ -1,0 +1,637 @@
+                                                                                                    IEEE TRANSACTIONS ON MEDICAL IMAGING, VOL. XX, NO. XX, XXXX 2025                        1
+
+
+
+
+                                                          Towards Collective Intelligence:
+                                                       Uncertainty-aware SAM Adaptation for
+                                                      Ambiguous Medical Image Segmentation
+                                             Mingzhou Jiang, Jiaying Zhou, Junde Wu, Graduate Student Member, IEEE, Tianyang Wang, Yueming
+                                                                       Jin, Member, IEEE, and Min Xu, Member, IEEE
+arXiv:2403.10931v3 [eess.IV] 17 Nov 2025
+
+
+
+
+                                              Abstract— Collective intelligence from multiple medical
+                                           experts consistently surpasses individual expertise in clin-
+                                           ical diagnosis, particularly for ambiguous medical image
+                                           segmentation tasks involving unclear tissue boundaries
+                                           or pathological variations. The Segment Anything Model
+                                           (SAM), a powerful vision foundation model originally de-
+                                           signed for natural image segmentation, has shown remark-
+                                           able potential when adapted to medical image segmen-
+                                           tation tasks. However, existing SAM adaptation methods
+                                           follow a single-expert paradigm, developing models based
+                                           on individual expert annotations to predict deterministic
+                                           masks. These methods systematically ignore the inherent
+                                           uncertainty and variability in expert annotations, which
+                                           fundamentally contradicts clinical practice, where multiple
+                                           specialists provide different yet equally valid interpreta-
+                                           tions that collectively enhance diagnostic confidence. We
+                                           propose an Uncertainty-aware Adapter, the first SAM adap-
+                                           tation framework designed to transition from single ex-
+                                           pert mindset to collective intelligence representation. Our
+                                           approach integrates stochastic uncertainty sampling from
+                                           a Conditional Variational Autoencoder into the adapters,
+                                           enabling diverse prediction generation that captures expert
+                                           knowledge distributions rather than individual expert an-
+                                           notations. We employ a novel position-conditioned control                 Fig. 1. An example of previous SAM adaptation methods (based on
+                                           mechanism to integrate multi-expert knowledge, ensuring                   single-expert strategy) and our proposed Uncertainty-aware Adapter
+                                           that the output distribution closely aligns with the multi-               based on multi-expert collective intelligence for clinical scenarios
+                                           annotation distribution. Comprehensive evaluations across
+                                           seven medical segmentation benchmarks have demon-
+                                           strated that our collective intelligence-based adaptation                 for reliable clinical implementation.
+                                           achieves superior performance while maintaining computa-
+                                           tional efficiency, establishing a new adaptation framework                  Index Terms— Segment Anything Model, Uncertainty-
+                                                                                                                     aware, Collective intelligence, Adapter
+                                              Manuscript received 17 November 2025. (Mingzhou Jiang, Jiaying
+                                           Zhou and Junde Wu contributed equally to this work.) (Corresponding                              I. I NTRODUCTION
+                                           author: Min Xu)
+                                              Mingzhou Jiang and Jiaying Zhou are with the Department of Com-
+                                           puter Science, The University of Alabama at Birmingham, Birming-
+                                           ham, AL 35294, United States (e-mail: 011122zmj@gmail.com; jiay-
+                                                                                                                     V     ISION foundation models such as the Segment Anything
+                                                                                                                           Model (SAM) [1], pretrained on large-scale natural im-
+                                                                                                                     age datasets, have revolutionized computer vision with remark-
+                                           ingzhou2127@outlook.com).
+                                              Junde Wu is with the Doctoral Training Centre, University of Oxford,   able generalization capabilities. Specifically, SAM employs the
+                                           Oxford OX1 2JD, U.K., also with Department of Biomedical Engineering      interactive segmentation framework and delivers outstanding
+                                           and Department of Electrical and Computer Engineering, National Uni-      performance across multiple downstream domain segmenta-
+                                           versity of Singapore, Singapore 119276 (e-mail: jundewu@ieee.org).
+                                              Tianyang Wang is with the Department of Computer Science, The          tion tasks [2], [3], and has swiftly become the darling of
+                                           University of Alabama at Birmingham, Birmingham, AL 35294, United         natural image segmentation. Many researchers have proposed
+                                           States (e-mail: tw2@uab.edu).                                             to adapt SAM to medical image segmentation, positioning it as
+                                              Yueming Jin is with Department of Biomedical Engineering and De-
+                                           partment of Electrical and Computer Engineering, National University of   a specialist for multiple medical domains [4]–[6]. A popular
+                                           Singapore, Singapore 119276 (e-mail: ymjin@nus.edu.sg).                   effective approach is the adapter technique, which involves
+                                              Min Xu is with the Computational Biology Department, Carnegie          inserting a bottleneck module with only a few parameters
+                                           Mellon University, Pittsburgh, PA 15213, United States, and also with
+                                           Mohamed bin Zayed University of Artificial Intelligence, Abu Dhabi        into the model, thus retaining its superior performance while
+                                           999041, United Arab Emirates (e-mail: mxu1@cs.cmu.edu).                   maintaining efficiency [7]–[9].
+2                                                                       IEEE TRANSACTIONS ON MEDICAL IMAGING, VOL. XX, NO. XX, XXXX 2025
+
+
+
+                                                                        tages of multi-expert collective intelligence while maintaining
+                                                                        computational efficiency and interactive capabilities is worth
+                                                                        exploring. By transforming SAM from one-to-one determinis-
+                                                                        tic mapping to one-to-many diverse plausible mapping, we
+                                                                        can transition from a single-expert paradigm to collective
+                                                                        intelligence, thus enhancing the model’s clinical applicability.
+                                                                        On the other hand, considering that SAM serves as an inter-
+                                                                        active segmentation framework, the impact of visual prompts
+                                                                        cannot be ignored [4], [9]. Particularly, when segmenting
+                                                                        medical images with unclear boundaries, different prompts
+                                                                        significantly affect model performance. However, most adap-
+                                                                        tation methods only perform limited interaction of prompt
+                                                                        embeddings in the decoder, and the lack of user prompt
+Fig. 2. The impact of aggregating different numbers of expert annota-   awareness would diminish SAM’s prompt sensitivity, leading
+tions for adapting SAM to optic cup segmentation.                       to subpar performance after fine-tuning [7].
+                                                                           Driven by these problems, we propose an Uncertainty-
+                                                                        aware Adapter, a user-prompt-sensitive module that efficiently
+   However, while SAM achieves impressive performance                   transforms vanilla SAM from a single-expert paradigm to
+when adapted to medical segmentation through efficient                  collective intelligence representation. The high-level idea is to
+adapter techniques, these adaptations remain confined to a              incorporate the probabilistic sampling process into adapters,
+single expert paradigm. This paradigm learns from a single              allowing the model to generate diverse predictions that simu-
+annotation and generates deterministic outputs, which mis-              late the collective intelligence of multiple experts. Inspired by
+aligns with medical practice. In routine clinical scenarios, the        Bayesian Neural Networks [18]–[20], we customize a latent
+fundamental challenge emerges from two sources of inherent              space for sampling to represent the range of valid expert
+uncertainty: ambiguous tissue and organ boundaries in medical           perspectives and propose a position-conditioned strategy to
+images, and reasonable differences in physician experience              integrate this expert diversity into the adapters. Specifically,
+and clinical judgment [10], [11]. Annotations from individual           we propose a lightweight attention mechanism called Position-
+physicians can contain errors arising from complex cases or             conditioned Attention (Poscon-Att). Poscon-Att establishes la-
+human oversight, yet current AI systems commonly rely on                tent relationships between stochastic uncertainty sampling and
+these single expert annotations without addressing such in-             adapter insertion positions within SAM’s hierarchical architec-
+herent limitations [10]. By contrast, clinical practice typically       ture, thereby unlocking SAM’s capability to represent segmen-
+requires collecting and synthesizing annotations from multiple          tation uncertainty. Furthermore, we introduce Prompt Channel
+experts to maintain safety standards, leveraging collective             Attention (Prompt-CAtt) to incorporate visual prompts into the
+intelligence to enhance diagnostic reliability [12]–[14]. Fig.1         Uncertainty-aware Adapter. In Prompt-CAtt, we use prompt
+shows an example of clinical diagnosis of glaucoma. In the              embeddings to generate a series of channel attention weights
+collective intelligence paradigm, when segmenting the optic             that can be efficiently applied to the adaptation embedding,
+cup, senior physicians may provide more aggressive bound-               thereby facilitating extensive and in-depth visual prompt inter-
+aries while younger specialists might offer more conservative           actions. This paradigm shift enables SAM to generate diverse
+delineations [15]. Each expert perspective contains valuable            predictions close to multi-expert distributions rather than sin-
+clinical insights that would be lost if current SAM adaptation          gular outputs, achieving collective intelligence representation
+methods rely on a single expert.                                        while preserving computational efficiency through parameter-
+   Incorporating multi-expert perspectives using methods such           efficient adaptation. Our contributions can be summarized as
+as majority voting can calibrate individual expert annotation           follows:
+errors and is typically used as the gold standard for training             • We identify the limitations in current SAM adapter ap-
+and evaluation [16], [17]. Nevertheless, as illustrated in Fig.2,       proaches and propose a novel collective intelligence adapter
+we discovered that multi-expert consensus can lead to complex           paradigm, which can capture multi-expert knowledge distribu-
+annotation patterns, thereby complicating the learning process          tions and enhance clinical applicability.
+for SAM adaptation methods. For the analysis, we system-                   • We propose an Uncertainty-aware Adapter framework that
+atically increased the number of experts used to generate               employs parameter-efficient adapter modules to adapt SAM
+consensus masks for training SAM adapters on optic cup                  with collective intelligence capability through two novel de-
+segmentation, then evaluated all models on the final consensus          signs: Position-conditioned Attention employs adapter position
+mask generated by all experts. It is evident that as the number         information as a condition to control multi-expert knowledge
+of participating experts increases, performance first rises and         learning; Prompt Channel Attention integrates visual prompts
+then declines, followed by a plateau phase. This reveals the            into adapter fine-tuning while preserving multi-expert knowl-
+inherent limitations of the previous SAM adaptation methods,            edge synthesis and maintaining prompt sensitivity.
+which can only learn specific annotator information and cannot             • We evaluate our model, Uncertainty-aware SAM (UA-
+effectively capture multi-expert knowledge.                             SAM), on seven ambiguous medical segmentation bench-
+   Therefore, effectively adapting SAM to leverage the advan-           marks. Our model demonstrates strong uncertainty represen-
+JIANG et al.: PREPARATION OF PAPERS FOR IEEE TRANSACTIONS ON MEDICAL IMAGING                                                       3
+
+
+
+tation capability with superior user-prompt adaptability after     Viviers et al. [20] extended to 3D volumetric data and incor-
+parameter-efficient fine-tuning, achieving state-of-the-art per-   porated Normalizing Flows to enable more flexible modeling
+formance on all benchmarks.                                        of complex output distributions.
+                                                                      However, these uncertainty quantification methods are pri-
+                    II. R ELATED W ORKS                            marily built upon U-Net architectures, which have inherent
+A. SAM Adaptation: the single expert paradigm.                     limitations in capturing long-range dependencies and gener-
+                                                                   alizing across diverse medical imaging tasks. Moreover, the
+   The Segment Anything Model (SAM) [1], a groundbreak-
+                                                                   paradigm shift of SAM adaptation methods from single expert
+ing framework for interactive segmentation, has demonstrated
+                                                                   approaches to multi-expert collective intelligence modeling
+significant impact in natural image segmentation.
+                                                                   remains underexplored, representing a critical gap between
+   However, due to lack of domain-specific medical knowl-
+                                                                   current adaptation strategies and clinical practice requirements.
+edge, SAM shows limited performance in medical image
+segmentation tasks. Various adaptation strategies have been
+                                                                                           III. M ETHODS
+explored [4], [9], [21]–[23]. Among these, adapter-based tech-
+niques, inspired by advances in natural language processing           Conventional SAM adaptation methods employ determinis-
+[24], have proven particularly efficient by enabling fine-         tic processing where, given an input image X and prompts
+tuning with minimal additional parameters while maintaining        p, the adapted model produces a deterministic segmentation
+strong performance. Wu et al. [7] introduced the Medical           M = SAMadapter (X, p). This one-to-one mapping limits
+SAM Adapter (Med-SA), a lightweight yet effective approach         clinical applicability and misaligns with real-world clinical
+that enhanced SAM’s medical segmentation capabilities by           scenarios. In practice, clinical applications rely on a multi-
+updating only 2 percent of the total parameters. They further      expert collective intelligence paradigm where preserving and
+proposed HyP-Adpt to enable prompt-conditioned adaptation,         synthesizing diverse expert perspectives is essential for reliable
+recognizing the critical role of user-provided prompts in med-     diagnosis. To bridge this gap, we propose UA-SAM, which
+ical image segmentation. Similarly, Cheng et al. [8] proposed      upgrades SAM from a single-expert paradigm to a collective-
+SAM-Med2D, which incorporated learnable adapter layers in          intelligence paradigm through a lightweight Uncertainty-aware
+each Transformer block to acquire domain-specific medical          Adapter.
+knowledge, achieving accurate segmentation of multiple or-
+gans, tumors, and lesions. Adapter-based tuning has recently       A. Overall architecture
+been carried over to the newer model SAM2 [25], yet its               The core challenge in achieving collective intelligence rep-
+performance on medical image segmentation remains limited          resentation lies in enabling SAM to generate diverse, close
+[26]. Despite these advances, a fundamental limitation is that     to the actual distribution of multi-expert knowledge while
+these approaches operate within a single-expert paradigm,          maintaining computational efficiency and interactive capa-
+treating medical image segmentation as a deterministic task.       bilities. To address it, we propose UA-SAM, a collective
+This deterministic output tends to produce over-confident pre-     intelligence adaptation paradigm, the overall framework is
+dictions that fail to capture the inherent ambiguity in medical    shown in Fig. 3. Firstly, we explicitly formulate the probabilis-
+images.                                                            tic distribution Me(z|X) of Multi-expert knowledge using
+                                                                   conditional Bayesian modeling [18]–[20], where any sample
+B. Medical Uncertainty Modeling: multi-expert collective           z drawn from the distribution is regarded as an indepen-
+intelligence.                                                      dent insight of different experts, corresponding to a plausible
+   Due to ambiguous boundaries of lesions, tissues, and organs,    segmentation result. Subsequently, a novel Uncertainty-aware
+along with variations in clinical expertise, the same medical      Adapter that is plugged into SAM, enabling it to learn multi-
+image can lead to different annotations [27]. This inherent am-    expert annotation pattern from the distribution Me(z|X). The
+biguity necessitates uncertainty-aware methods that can gen-       adapter employs conditional interaction mechanism cond(·) to
+erate multiple plausible segmentation hypotheses [17], which       learn the mapping from low-dimensional vector z to segmen-
+hold greater clinical value than deterministic approaches. To      tation. This capacitates the fine-tuned SAM to produce diverse
+address this challenge, uncertainty quantification methods such    segmentation outputs M̃ for the same input X by sampling
+as model ensembles [28] and variational inference [18] have        different z, as formulated in Eq.1
+been proposed to capture output diversity. A notable work is
+                                                                       M̃ = UA-SAM(X, cond(z)),          st. z ∼ Me(z|X)         (1)
+Prob U-Net [18], which combined U-Net with a conditional
+variational autoencoder (CVAE) to estimate aleatoric uncer-
+tainty from multi-annotator data. Unlike traditional approaches    B. Multi-expert knowledge latent distribution
+that produce pixel-wise probabilities, Prob U-Net generated           To generate the distribution Me(·) representing multi-
+consistent segmentation maps with calibrated likelihoods, ef-      expert annotations knowledge, it is imperative to estimate
+fectively capturing output uncertainty and rare modes. This        the parameters Θ of this distribution. We adopt a diagonal
+CVAE-based uncertainty modeling has inspired subsequent            Gaussian distribution N (µ, diag(σ)) (µ, σ ∈ RB×C , where B
+works. Bhat et al. [19] analyzed how different latent space        is the batch size and C is the latent distribution dimension) to
+distributions affect the model’s ability to capture annotation     characterize the set of stochastic samples z. The distribution
+variability in lung tumors and white matter hyperintensities.      is learned by minimizing the KL divergence loss function (in
+4                                                                       IEEE TRANSACTIONS ON MEDICAL IMAGING, VOL. XX, NO. XX, XXXX 2025
+
+
+
+
+Fig. 3. Overview architecture of framework UA-SAM. We froze the parameters of SAM and only updated the Uncertainty-aware Adapter parameters.
+Note that we did not show the prompt encoder.
+
+
+
+Eq.4) between a Prior network Pθ and a Posterior network Qϕ .          C. Uncertainty-aware Adapter
+The Prior network Pθ takes only the raw image X and learns
+the mapping from the image to the multi-expert annotations                The multi-expert knowledge latent distribution Me(·) sim-
+space. The Posterior network Qϕ employs a label-sampling               ulates the collective decision-making process of multiple ex-
+strategy [29], where it randomly selects one annotation Y from         perts. Given any input image X, the distribution can generate
+the candidate multi-expert labels, concatenating it with the raw       unlimited possible low-dimensional mappings (stochastic sam-
+image, and using this combined input to supervise the prior            ples z) that correspond to different plausible segmentations.
+representation. Prior network Pθ and Posterior network Qϕ are          The stochastic sample z characterizes the representation of
+implemented using a 4-layer convolutional network. During              uncertainty inherent in ambiguous medical images. The key
+training, we represent the knowledge latent distribution Me(·)         innovation of Uncertainty-aware Adapter is designed to help
+with the posterior distribution Q, whereas during inference, we        SAM effectively integrate these uncertainty samples, ensuring
+rely on the prior distribution P . We formulate the workflow           the model can generate appropriate responses for different
+by the following equations:                                            uncertainty representations. However, it is worth noting that
+                                                                       adapters at different positions actually process image em-
+       zinfer ∼ P(·|X) = N (µprior (X), diag(σprior (X)))        (2)   beddings with different features, such as image structures,
+                                                                       textures, and semantic information. Uniformly sampling a
+  ztrain ∼ Q(·|X, Y) = N (µpost (X, Y), diag(σpost (X, Y)))            single annotation latent representation z for different adapters
+                                                           (3)         leads to a feature mismatch, which is demonstrated by our sub-
+   In the training process, we compute the loss as shown in            sequent experiments. It is necessary to align z with the visual
+Eq.4. Given the raw image X and the ground truth segmen-               representations that the adapters are processing. Therefore,
+tation Y , S is the predicted segmentation. The Dice-CE loss,          we propose a lightweight module called Position-conditioned
+treating the output S as the parameterization of a pixel-wise          Attention (Poscon-Att) to align the uncertainty samples z with
+categorical distribution D, penalizes differences between S            image embeddings.
+and Y . We empirically set the scaling coefficient β to 1.             Position-conditioned Attention (Poscon-Att): Direct compu-
+                                                                       tation between the high-dimensional visual features E and the
+           L = Ez∼Q(·|Y,X) [− log D (Y | S (X, z))]                    stochastic variable z can be computationally expensive. In-
+                                                                 (4)
+              +β × DKL (Q (z | Y, X) ∥ P (z | X))                      stead, we utilize interactions with low-dimensional positional
+                                                                       encodings, allowing the adapter to perceive uncertainty while
+                                                                       avoiding additional parameter overhead during fine-tuning. As
+JIANG et al.: PREPARATION OF PAPERS FOR IEEE TRANSACTIONS ON MEDICAL IMAGING                                                       5
+
+
+
+illustrated in Fig.3, the module takes as input the positional      perform a conditional enhancement on G(z) using channel-
+variable pi and uncertainty sample z, then outputs the position-    wise dot product. Finally, we sum the features obtained from
+conditioned uncertainty feature G(z) and positional variable        the two branches to generate uncertainty features that are
+pi+1 for the next adapter. Specifically, we first use global        effectively constrained by the visual prompt information. In
+average pooling and a two-layer MLP to map the image                this way, user prompt information is used to condition the
+embeddings E0 , encoded by the 0-th Transformer block, to           uncertainty features, enabling the model to produce diverse
+the positional encoding p0 (pi ∈ R1×L , where L is the              outputs while maintaining robust prompt adaptability.
+number of adapters). Subsequently, we employ scaled dot-
+product attention following [30] to integrate positional features                         IV. E XPERIMENTS
+and stochastic sample features, generating the latent variable      A. Datasets
+Z ′ . We use different linear projections to map the positional        To verify the effectiveness of the proposed framework, we
+encoding pi and the stochastic sample z to features PK , PV ,       evaluated it on three publicly available multi-expert annota-
+ZQ , and ZV respectively (where they have the same shape as         tions datasets: lung nodule segmentation dataset LIDC-IDRI
+z ∈ RB×C , where B is the batch size and C is the latent            [31], optic-cup segmentation dataset REFUGE2-cup [32], and
+space dimension). The attention mechanism is used to align          multiple organs segmentation dataset QUBIQ [33]. These
+uncertainty sampling features to the adapters’ positions as         datasets encompass seven multi-annotated benchmarks and
+illustrated in Eq.5.                                                include data from various image modalities, such as color
+                                       ⊤
+                                                                   fundus images, CT scans, and MRI.
+                                  ZQ PK
+                 Z ′ = softmax      √       ZV                (5)   LIDC-IDRI. The LIDC-IDRI dataset is a lung nodule segmen-
+                                      C                             tation dataset with lesion areas annotated by four radiologists.
+   Conditioned uncertainty representation Z ′ , which contains      The dataset includes 15,096 thoracic CT images and cropped
+the image semantic information and matches the stages of            128 × 128 patches around the lesions. We divide the dataset
+feature processing, undergoes channel interaction to obtain the     into a training set and a testing set at an 80:20 ratio. The
+position-conditioned uncertainty feature G(z). More specif-         training set contains 12,076 images, while the testing set
+ically, we use element-wise multiplication (⊙) between Z ′          consists of 3,018 images.
+and PV to further integrate position information into the           REFUGE2. We conduct experiments on the REFUGE2 optic-
+uncertainty feature. Then, we reshape the uncertainty feature to    cup dataset, consisting of 1,200 fundus images, each annotated
+match the dimension of the image embedding. We transform            by seven radiologists. Training, validation, and test sets each
+feature tensors from RB×C to RB×H×W ×dim using channel              contain 400 images. This dataset is provided for glaucoma
+replication and a three-layer MLP, where H and W denote             analysis. Each image is high-resolution, sized at 2056 × 2124.
+the height and width of patch embeddings processed by the           To focus more on the segmentation of blurred regions, we crop
+image encoder, and dim is the channel dimension of patch            each image to 384 × 384 around the optic-cup center.
+embeddings. Finally, we apply reshape and MLP operations            QUBIQ. QUBIQ is used for quantifying uncertainties in
+to the positional encoding features PV to adapt them for the        biomedical images. It contains four different segmentation
+subsequent adapter feature processing stage, thereby represent-     datasets with CT and MRI modalities, including brain-growth
+ing the updated positional encoding features pi+1 for the next      (one task, MRI, seven raters, 34 cases for training and 5 cases
+adapter. The calculation of G(z) is as follows:                     for testing), brain-tumor (one task, MRI, three raters, 28 cases
+                         ′
+                                                                    for training and 4 cases for testing), prostate (two subtasks,
+G(z) = MLP(Repeat(Z ⊙PV , HorW, dim = 1, 2), dim = 3)               MRI, six raters, 48 cases for training and 7 cases for testing),
+                                                           (6)      kidney (one task, CT, three raters, 20 cases for training and 4
+Prompt Channel Attention (Prompt-CAtt): Considering the             cases for testing).
+significant impact of interactive prompts on different am-
+biguous segmentation tasks, we employ prompt-conditioned            B. Experimental Settings
+adaptation to enhance the interaction between visual prompts           1) Training details: During training, we employed the Adam
+and the adapter, as illustrated in Fig.3. Toward that end, we       optimizer with an initial learning rate of 1e−4 and a StepLR
+introduce a Prompt Channel Attention (Prompt-CAtt) mod-             scheduler for learning rate decay. For each image, labels were
+ule. We find that directly interacting with high-level image        randomly sampled from the available multiple annotations.
+embeddings causes low-level semantic prompt embeddings              All images from REFUGE2 are cropped around the center
+to be overshadowed, as demonstrated by our ablation stud-           of the cup to a size of 384 × 384 pixels, while others use
+ies. To address this, we apply channel attention in Prompt-         their default sizes. To ensure fair comparison, we used SAM-
+CAtt to establish a strong connection between uncertainty           ViT/B as the backbone for all SAM variants and set the
+and visual prompts, which enhances UA-SAM’s robustness              multimask output parameter to 1. All baseline methods
+across various ambiguous medical image segmentation tasks           were configured with their default settings as reported in
+involving different visual prompts. Specifically, we use a          the original papers. The experiments were implemented in
+global max pooling to capture high activations from the user        PyTorch 2.3.0 and trained on two NVIDIA RTX 3090 GPUs
+prompt embeddings and an average pooling to obtain a smooth         with 24 GB memory. All adapter-based models were trained
+estimation of the intended position. We then integrate an MLP       for up to 50 epochs with early stopping based on validation
+to map these weights to the same dimension as G(z), and             loss.
+6                                                                   IEEE TRANSACTIONS ON MEDICAL IMAGING, VOL. XX, NO. XX, XXXX 2025
+
+
+
+                                                                TABLE I
+Q UANTITATIVE COMPARISON WITH STATE - OF - THE - ART METHODS ON LIDC-IDRI AND REFUGE- CUP DATASETS . B EST RESULTS ARE IN BOLD. F OR
+  ALL THE COMPARED METHODS , THE RESULTS ARE OBTAINED EITHER THROUGH REPRODUCTION USING THEIR OFFICIAL IMPLEMENTATIONS OR
+                         DIRECTLY FROM THE EXPERIMENTAL RESULTS REPORTED IN THEIR RESPECTIVE PAPERS .
+
+                                              SAM-      Trainable            LIDC-IDRI                  REFUGE-cup
+           Category                Method     based    Params (M)    Dice↑     mIoU↑ GED↓       Dice↑     mIoU↑ GED↓
+                                 U-Net                     7.76      0.690     0.624   0.415    0.789      0.676  0.475
+                             SAM-adapter        ✓          4.48      0.876     0.781   0.345    0.884      0.768  0.371
+           Deterministic
+             Methods           Med-SA           ✓          7.24      0.869     0.773   0.333    0.889      0.771  0.433
+                               MedSAM           ✓         97.29      0.849     0.769   0.367    0.864      0.758  0.385
+                              MedSAM2           ✓         37.14      0.852     0.779   0.311    0.847      0.741  0.367
+                                SAM-U           ✓            0       0.615     0.421   0.656    0.632      0.446  0.610
+                                MRNet                     81.19      0.707     0.624   0.504    0.849      0.703  0.440
+           Uncertainty         LS-UNet                    29.94      0.623     0.578   0.540    0.755      0.631  0.548
+            Methods         Ensemble U-Net                23.28      0.638     0.589   0.475    0.744      0.652  0.459
+                              Prob UNet                   10.34      0.602     0.513   0.331    0.682      0.555  0.559
+                                CCDM                        30         -         -     0.239      -          -      -
+                              MedSegDiff                    25       0.717     0.602   0.420    0.859      0.762  0.279
+                            UA-SAM (Ours)       ✓          8.04      0.889     0.786   0.209    0.897      0.789  0.230
+
+
+
+   2) Evaluation details: UA-SAM simulates the multi-expert         where X and Y represent samples from the predicted and
+annotation paradigm. It generates diverse predictions that not      ground truth distributions respectively, and d(·, ·) denotes the
+only align with real physician annotation distributions but         distance function based on Intersection over Union. Lower
+also match multi-expert consensus. To comprehensively assess        GED values indicate better alignment between predicted and
+our method, we use two categories of metrics. For consensus         true annotation distributions.
+evaluation, we apply a majority voting strategy across multiple        3) Prompt Synthesizing Strategy: For training, we randomly
+annotated labels to derive the consensus mask. We measure           selected one point from the ground truth region as the prompt.
+Dice score and mIoU to quantify segmentation accuracy               For evaluation, a majority voting strategy was applied across
+and overlap. For distribution evaluation, we compute the            multiple annotated labels to generate the final mask. SAM
+Generalized Energy Distance (GED) to assess the alignment           variants were evaluated using varying numbers of points and
+between predicted and ground truth annotation distributions.        bounding boxes as prompts, both derived from the majority
+GED is calculated using 16 sampled predictions per image.           voting masks. Points were randomly sampled from the ground
+All metrics are reported as mean values across multiple runs.       truth region, while bounding boxes [8] were defined as the
+The calculation methods for these metrics are as follows:           maximum enclosing rectangles with each coordinate randomly
+Dice Score: The Dice similarity coefficient measures the            perturbed by up to 5 pixels.
+overlap between predicted and ground truth segmentations,
+computed using the MONAI library with the formula:                  C. Main Results
+                               2 × |P ∩ G|                             1) Quantitative assessment: We compared our UA-SAM
+                      Dice =                                 (7)    model with state-of-the-art (SOTA) segmentation methods,
+                                |P | + |G|
+                                                                    classified into deterministic methods and uncertainty meth-
+where P represents the predicted mask and G denotes the             ods, with quantitative results in Table I. The deterministic
+ground truth mask.                                                  methods encompass typical adapter-based SAM fine-tuning
+Mean Intersection over Union (mIoU): The IoU metric                 approaches, including SAM-adapter (which inserts the original
+evaluates pixel-wise accuracy by calculating the ratio of inter-    adapters at the same locations as UA-SAM) and Med-SA [7],
+section to union between predicted and ground truth masks:          generalized SAM fine-tuning methods such as MedSAM [4]
+                                                                    and MedSAM2 [34], as well as the traditional U-Net [35].
+                                   |P ∩ G|
+                           IoU =                             (8)    Among the uncertainty methods, we compared our approach
+                                   |P ∪ G|                          with the interactive uncertainty method SAM-U [36], widely
+We compute the mean IoU across all images in each batch,            adopted uncertainty-aware approaches including Prob UNet
+with a small epsilon value (1e−8 ) added to prevent division        [18], Ensemble U-Net [37], LS-UNet [29], and MRNet [17],
+by zero.                                                            as well as diffusion-based generative approaches CCDM [38]
+Generalized Energy Distance (GED): As a distributional              and MedSegDiff [39].
+metric, GED quantifies the similarity between the model’s              For SAM variants, we report the optimal results across
+predicted distribution and the true multi-expert annotation dis-    different prompt configurations (1-point, 2-point, 3-point, and
+tribution. It measures the discrepancy between two probability      bounding box prompts), with GED calculated using a 1-point
+distributions using:                                                prompt. Under bounding box prompt conditions, our model
+                                                                    demonstrated superior performance, achieving Dice scores of
+    GED = 2E[d(X, Y )] − E[d(X, X ′ )] − E[d(Y, Y ′ )]       (9)    0.889 and 0.897, along with mIoU scores of 0.786 and 0.789
+JIANG et al.: PREPARATION OF PAPERS FOR IEEE TRANSACTIONS ON MEDICAL IMAGING                                                                    7
+
+
+
+
+Fig. 4. UA-SAM shows superior segmentation visualization. Our results exhibit more prominent uncertainty boundaries while maintaining shapes
+that are closer to the ground truth. Here, the Ensemble U-Net is implemented by training UNet under three different random seeds. Due to the large
+discrepancy in prediction shapes, we employed majority voting to aggregate the results from multiple U-Nets.
+
+
+
+                            TABLE II                                      compared to a standard adapter when fine-tuning SAM for
+   Q UANTITATIVE EVALUATION OF THE QUBIQ BENCHMARK BY D ICE               segmenting ambiguous medical images, even outperforming
+     SCORE , INCLUDING SEGMENTATION OF BRAINTUMOR Dtum ,
+                                                                          other specialized uncertainty methods.
+ BRAINGROWTH Dbrn , TWO PROSTATE TASKS Dpr1 AND Dpr2 , AND
+ KIDNEY Dkid . 1- POINT PROMPT IS EMPLOYED FOR SAM VARIANTS .                Furthermore, we present a comparison between SAM vari-
+   B EST RESULTS ARE IN BOLD. C ERTAIN METHODS COULD NOT BE               ants and UA-SAM under different prompt settings in Table III.
+  SUCCESSFULLY REPRODUCED ON THE QUBIQ DATASET OWING TO                   Our UA-SAM outperforms others with the highest Dice score
+  CONVERGENCE DIFFICULTIES , AND CONSEQUENTLY THEIR RESULTS
+                                                                          in almost all prompt settings. Even in optic cup segmentation,
+               ARE OMITTED FROM THE COMPARISON .
+                                                                          UA-SAM surpasses other variants that employ multi-point
+   Method            Dtum     Dbrn    Dpr1    Dpr2    Dkid     Avg        prompts by using only single-point prompts. This confirms
+   U-Net             0.895    0.729   0.841   0.695   0.824   0.796
+                                                                          the necessity of incorporating visual prompt information to
+   MedSAM            0.826    0.761   0.898   0.683   0.862   0.806
+   SAM-adapter       0.824    0.772   0.935   0.795   0.851   0.836       constrain the adaptation process in UA-SAM, as it enhances
+   Med-SA            0.843    0.802   0.911   0.771   0.723   0.810       prompt sensitivity and yields more robust segmentation results
+   SAM-U             0.908    0.817   0.846   0.725   0.895   0.838       for ambiguous medical images.
+   Ensemble U-Net    0.901    0.741   0.868   0.746   0.893   0.829
+   Prob UNet         0.891    0.645   0.688   0.653   0.606   0.696
+   LS-UNet           0.858    0.827   0.862   0.690   0.723   0.792                                 TABLE III
+   MRNet             0.890    0.822   0.873   0.760   0.581   0.785          P ERFORMANCE COMPARISON OF DIFFERENT SAM VARIANTS WITH
+   UA-SAM            0.911    0.840   0.938   0.818   0.947   0.891               VARIOUS PROMPT TYPES . B EST RESULTS ARE IN BOLD.
+
+                                                                                                        LIDC-IDRI
+                                                                                 Prompts          1-point   2-points     3-points    boxes
+                                                                                 SAM-Adapter      0.861     0.651        0.628       0.876
+on the LIDC-IDRI and REFUGE2 datasets, respectively. UA-                         Med-SA           0.869     0.799        0.825       0.868
+SAM also achieves the lowest GED values of 0.209 and 0.230,                      MedSAM           0.849     0.832        0.829       0.829
+indicating that its predictions are closer to the distribution                   UA-SAM           0.876     0.832        0.746       0.889
+                                                                                                      REFUGE2-cup
+of real human doctors. We adapt SAM using a multi-expert
+                                                                                 Prompts          1-point   2-points     3-points    boxes
+collective intelligence paradigm, enabling SAM to capture rich                   SAM-Adapter      0.823     0.842        0.845       0.884
+information from different expert annotations, thereby produc-                   Med-SA           0.830     0.844        0.848       0.889
+ing outputs that better align with expert group consensus, and                   MedSAM           0.821     0.852        0.864       0.808
+the output distribution more closely approximates multi-expert                   UA-SAM           0.864     0.867        0.870       0.897
+annotations. Additionally, as reported in Table II, quantitative
+comparisons on QUBIQ further confirm that the Uncertainty-                  2) Qualitative assessment: Apart from superior perfor-
+aware Adapter exhibits superior generalization capabilities               mance, our most significant advantage is the capability to
+8                                                                  IEEE TRANSACTIONS ON MEDICAL IMAGING, VOL. XX, NO. XX, XXXX 2025
+
+
+
+                            TABLE IV
+A BLATION STUDY RESULTS BY D ICE SCORE Dlung OF LIDC-IDRI AND
+  Dcup OF OPTIC - CUP SEGMENTATION . B EST RESULTS ARE IN BOLD.
+    N OTE THAT ’z AND p’ REPRESENTS SAMPLE z WITHOUT BEING
+ CONDITIONED BY p AND MEANS z DIRECTLY CONCATENATED WITH p.
+
+            z and   Poscon-   Prompt-   Prompt-
+    z   p                                         Dlung   Dcup
+              p       Att       add      CAtt
+    ✓                                             0.860   0.823
+        ✓                                         0.862   0.826
+    ✓   ✓    ✓                                    0.865   0.828
+    ✓   ✓             ✓                           0.872   0.847
+    ✓   ✓             ✓         ✓                 0.868   0.848
+    ✓   ✓             ✓                   ✓       0.876   0.864
+                                                                   Fig. 5. The impact of sampling times. For each image, the model
+                                                                   predicts n times and then aggregates the results into the final mask
+                                                                   via majority voting.
+produce credible segmentation margins for ambiguous tissues
+or organs, as demonstrated in Fig. 4, thereby extending its
+clinical utility. Fig. 4 reveals that conventional adapter-based
+methods, such as Med-SA and SAM-Adapter, yield determin-
+istic predictions for ambiguous targets, limiting their adoption
+in clinical practice. Other uncertainty methods like Prob U-
+Net and MRNet produce uncertainty maps that are both
+smaller and morphologically less aligned with the ground-
+truth labels. In contrast, our approach delivers well-defined
+uncertainty regions whose contours closely match the ref-
+erence annotations. Qualitative results demonstrate that our
+approach successfully enables the paradigm shift in SAM
+adaptation from single-expert deterministic outputs to multi-
+expert collective intelligence representation.
+   3) Ablation study: We conducted comprehensive ablation          Fig. 6. Consensus matching. Evaluation performance rises as the
+studies to validate the effectiveness of each component pro-       number of experts involved in evaluation increases.
+posed in UA-SAM. In Tables IV and V, we compared several
+methods based on SAM, including separately concatenating
+the stochastic sample z and the learnable positional variable p    stronger results.
+into the adapter, as well as combining both through different         Previously, all evaluations used single sampling for each
+interaction methods. We employed a 1-point prompt for all          input image. Here, we analyze the performance change when
+models. The results reveal no significant changes in model         using multiple samples for a single input and then aggregating
+performance for most tasks when directly concatenating the         the samples using a majority voting strategy, as shown in
+sample z into the adapter, which is similar to Prob U-Net.         Fig. 5. As the number of samples increases, UA-SAM’s
+As previously mentioned, we utilize Poscon-Att to condition        performance shows only slight improvement. This is because,
+uncertainty sampling and achieve feature matching with the         although the multiple sampled predictions are diverse, their
+adapter, resulting in a significant performance improvement.       distribution is close to the results collectively agreed upon
+Furthermore, we observed that during prompt adaptation,            by multiple expert annotators in the labels; they all contain
+simple fusion methods like direct addition of prompt embed-        common regions, so the result after majority voting does not
+dings to high-level visual features lead to either performance     change much. The model’s performance remains stable in rep-
+degradation or no improvement. This further validates the          resenting the multi-expert consensus, so no further sampling
+effectiveness of the proposed Prompt-CAtt.                         is needed to improve performance, only to enhance diversity.
+   Additionally, we conducted comprehensive experiments on            4) Additional analysis: Since we incrementally modified
+the dimensionality of the latent distribution and the number       the adapters for enabling SAM to align with the collective
+of adapters to identify the optimal hyper-parameters, ensuring     intelligence paradigm, we conducted a comprehensive analysis
+the best performance of UA-SAM. As illustrated in Table VI,        to evaluate both the parameter efficiency of our Uncertainty-
+in Sub-table (a), we observe that the optimal performance is       aware Adapter and its computational impact on model infer-
+achieved when the dimension C of the multi-expert knowledge        ence speed. As shown in Table VII, our method increases train-
+latent distribution Me(·) is set to 6, indicating that at this     able parameters moderately compared to other adapter-based
+point the latent space best captures the annotation patterns       approaches, but remains practical for deployment. Although
+of the experts. Sub-table (b) confirms that increasing the         inference speed slightly decreases due to the additional com-
+number of inserted adapter layers steadily improves model          putation in adapters, the performance improvements across all
+performance, and equipping more adapters yields consistently       metrics justify this minor cost. The computational trade-off
+JIANG et al.: PREPARATION OF PAPERS FOR IEEE TRANSACTIONS ON MEDICAL IMAGING                                                                             9
+
+
+
+                                                           TABLE V
+A BLATION STUDY ON QUBIQ BY D ICE SCORE , INCLUDING SEGMENTATION OF BRAINTUMOR Dtum , BRAINGROWTH Dbrn , TWO PROSTATE TASKS
+ Dpr1 AND Dpr2 , AND KIDNEY Dkid . 1- POINT PROMPT IS EMPLOYED FOR SAM VARIANTS . B EST RESULTS ARE IN BOLD. N OTE THE ’z AND p’
+                REPRESENTS SAMPLE z WITHOUT BEING CONDITIONED BY p AND MEANS z DIRECTLY CONCATENATED WITH p.
+
+                     Uncertainty     Position
+                                                   z and p     Poscon-Att      Prompt-CAtt     Dtum    Dbrn          Dpr1    Dpr2    Dkid
+                      sample z       variant p
+                         ✓                                                                     0.889       0.812     0.878   0.807   0.848
+                                        ✓                                                      0.869       0.791     0.911   0.797   0.811
+                         ✓              ✓             ✓                                        0.815       0.783     0.880   0.727   0.715
+                         ✓              ✓                          ✓                           0.904       0.824     0.928   0.813   0.938
+                         ✓              ✓                          ✓               ✓           0.911       0.840     0.938   0.818   0.947
+
+
+
+                            TABLE VI                                                                             TABLE VII
+        A BLATION ON DIFFERENT HYPERPARAMETER SETTINGS                               P ERFORMANCE COMPARISON OF SAM- BASED METHODS INCLUDING
+                                                                                      TRAINABLE PARAMETERS (PARAMS , M), INFERENCE TIME (I NFER ,
+      (a) Latent space dimension                 (b) Adapter inserted layers
+                                                                                       MS / IMG ), FRAMES PER SECOND (FPS, IMGS / S ), D ICE SCORE OF
+  C        Dcup       C      Dcup                Layers          Dcup
+                                                                                    LIDC-IDRI AND OPTIC - CUP SEGMENTATION UNDER 1- POINT PROMPT.
+  2        0.822       6     0.864                 1–3           0.803
+  3        0.818       7     0.820                 1–6           0.817                       Method          Params      Infer    FPS    Dlung   Dcup
+  4        0.817       8     0.811                 1–9           0.854                       MedSAM           97.29     84.99    11.77   0.849   0.821
+  5        0.819       9     0.820                1–12           0.864                       Med-SA            7.24      87.57   11.42   0.869   0.830
+                                                                                             SAM-adapter       4.48     91.55    10.92   0.861   0.823
+                                                                                             UA-SAM            8.04     112.95    8.85   0.876   0.864
+
+
+
+
+Fig. 7. The visualization of Z ′ and sample z on the REFUGE2-cup.
+PCA and K-means for clustering.
+
+                                                                                   Fig. 8. Different prompts on the REFUGE2-cup. Each result is based on
+is minimal when considering the significant enhancement in                         eight stochastic samples. Gray areas mark regions where all samples
+                                                                                   agree perfectly and white areas highlight zones of high prediction
+clinical applicability and diagnostic reliability that our method                  uncertainty. Our method supports controllable multi-annotation patterns.
+provides. In addition, we evaluated whether UA-SAM can                             By changing the visual prompts, we can control the level of uncertainty
+effectively capture multi-expert consensus, as illustrated in                      in the outputs.
+Fig.6. Consensus masks were generated with varying numbers
+of expert annotations. As the number of experts involved
+in the evaluation increases, the model’s performance shows                         the diversity of the model outputs is extremely low. These
+an upward trend, indicating that UA-SAM can effectively                            results indicate that UA-SAM exhibits robust performance
+accommodate clinical scenarios with multiple experts and                           across different prompts, further validating its prompt-adaptive
+accurately extract consensus information from divergent opin-                      capability. It also highlights a significant advantage of our
+ions. Furthermore, the Fig.7 shows that Z ′ clusters differ-                       approach compared to previous non-interactive uncertainty
+ently after integrating the position encoding into the adapters,                   methods: our method allows users to easily adjust the degree
+thereby verifying the effectiveness of our Poscon-Att design in                    of uncertainty in the results through different prompts, making
+conditioning uncertainty samples to align with the appropriate                     it adaptable to a variety of clinical scenarios.
+stage of feature processing within the adapters. This further
+supports our motivation.                                                                                           V. C ONCLUSION
+   To verify the robustness of UA-SAM across prompt vari-                             We propose an Uncertainty-aware Adapter, a multi-expert
+ations, we systematically varied the prompts and visualized                        collective intelligence adaptation paradigm for adapting SAM
+their impact on output uncertainty in Fig. 8. As the number of                     to ambiguous medical segmentation. This paradigm shift from
+points increases, the outputs’ uncertainty gradually decreases                     single-expert predictions to collective intelligence representa-
+(indicated by the white areas), tending towards more determin-                     tion aligns with clinical practice where multiple specialists
+istic predictions. When using a bounding box as the prompt,                        provide diverse yet valid interpretations. Evaluations on seven
+10                                                                                IEEE TRANSACTIONS ON MEDICAL IMAGING, VOL. XX, NO. XX, XXXX 2025
+
+
+
+medical benchmarks demonstrate superior performance while                        [20] C. G. Viviers, A. M. Valiuddin, P. H. de With, and F. van der Sommen,
+enabling multiple plausible segmentation hypotheses to be                             “Probabilistic 3d segmentation for aleatoric uncertainty quantification in
+                                                                                      full 3d medical data,” arXiv preprint arXiv:2305.00950, 2023.
+generated. Our method makes SAM more reliable and clin-                          [21] S. Liu, J. Chen, B.-G. He, T. Chen, G. Jeon, and W. Wang, “Adapting
+ically applicable for downstream medical tasks.                                       segment anything model for shield tunnel water leakage segmentation,”
+                                                                                      in Proceedings of the 2023 Workshop on Advanced Multimedia Com-
+                                                                                      puting for Smart Manufacturing and Engineering, pp. 13–18, 2023.
+                                R EFERENCES                                      [22] X. Yan, S. Sun, K. Han, T.-T. Le, H. Ma, C. You, and X. Xie, “After-
+                                                                                      sam: Adapting sam with axial fusion transformer for medical imaging
+ [1] A. Kirillov, E. Mintun, N. Ravi, H. Mao, C. Rolland, L. Gustafson,               segmentation,” in Proceedings of the IEEE/CVF Winter Conference on
+     T. Xiao, S. Whitehead, A. C. Berg, W.-Y. Lo, et al., “Segment anything,”         Applications of Computer Vision, pp. 7975–7984, 2024.
+     arXiv preprint arXiv:2304.02643, 2023.                                      [23] C. Chen, J. Miao, D. Wu, A. Zhong, Z. Yan, S. Kim, J. Hu, Z. Liu,
+ [2] X. Zhang, Y. Liu, Y. Lin, Q. Liao, and Y. Li, “Uv-sam: Adapting segment          L. Sun, X. Li, et al., “Ma-sam: Modality-agnostic sam adaptation for
+     anything model for urban village identification,” in Proceedings of the          3d medical image segmentation,” Medical Image Analysis, vol. 98,
+     AAAI Conference on Artificial Intelligence, vol. 38, pp. 22520–22528,            p. 103310, 2024.
+     2024.                                                                       [24] N. Houlsby, A. Giurgiu, S. Jastrzebski, B. Morrone, Q. De Laroussilhe,
+ [3] P. Zhang, T. Yan, Y. Liu, and H. Lu, “Fantastic animals and where to             A. Gesmundo, M. Attariyan, and S. Gelly, “Parameter-efficient transfer
+     find them: Segment any marine animal with dual sam,” in Proceedings of           learning for NLP,” in Proceedings of the 36th International Conference
+     the IEEE/CVF Conference on Computer Vision and Pattern Recognition,              on Machine Learning (K. Chaudhuri and R. Salakhutdinov, eds.), vol. 97
+     pp. 2578–2587, 2024.                                                             of Proceedings of Machine Learning Research, pp. 2790–2799, PMLR,
+ [4] J. Ma, Y. He, F. Li, L. Han, C. You, and B. Wang, “Segment anything in           09–15 Jun 2019.
+     medical images,” Nature Communications, vol. 15, no. 1, p. 654, 2024.       [25] N. Ravi, V. Gabeur, Y.-T. Hu, R. Hu, C. Ryali, T. Ma, H. Khedr,
+ [5] R. Deng, C. Cui, Q. Liu, T. Yao, L. W. Remedios, S. Bao, B. A.                   R. Rädle, C. Rolland, L. Gustafson, et al., “Sam 2: Segment anything
+     Landman, L. E. Wheless, L. A. Coburn, K. T. Wilson, et al., “Segment             in images and videos,” arXiv preprint arXiv:2408.00714, 2024.
+     anything model (sam) for digital pathology: Assess zero-shot segmenta-      [26] S. Sengupta, S. Chakrabarty, and R. Soni, “Is sam 2 better than sam in
+     tion on whole slide imaging,” arXiv preprint arXiv:2304.04155, 2023.             medical image segmentation?,” arXiv preprint arXiv:2408.04212, 2024.
+ [6] Y. Gao, W. Xia, D. Hu, and X. Gao, “Desam: Decoupling segment               [27] A. Sylolypavan, D. Sleeman, H. Wu, and M. Sim, “The impact of
+     anything model for generalizable medical image segmentation,” arXiv              inconsistent human annotations on ai driven clinical decision making,”
+     preprint arXiv:2306.00499, 2023.                                                 NPJ Digital Medicine, vol. 6, no. 1, p. 26, 2023.
+ [7] J. Wu, W. Ji, Y. Liu, H. Fu, M. Xu, Y. Xu, and Y. Jin, “Medical             [28] M. Guan, V. Gulshan, A. Dai, and G. Hinton, “Who said what: Modeling
+     sam adapter: Adapting segment anything model for medical image                   individual labelers improves classification,” in Proceedings of the AAAI
+     segmentation,” 2023.                                                             conference on artificial intelligence, vol. 32, 2018.
+ [8] J. Cheng, J. Ye, Z. Deng, J. Chen, T. Li, H. Wang, Y. Su,                   [29] M. H. Jensen, D. R. Jørgensen, R. Jalaboi, M. E. Hansen, and
+     Z. Huang, J. Chen, L. Jiang, et al., “Sam-med2d,” arXiv preprint                 M. A. Olsen, “Improving uncertainty estimation in convolutional neural
+     arXiv:2308.16184, 2023.                                                          networks using inter-rater agreement,” in Medical Image Computing
+ [9] T. Chen, L. Zhu, C. Deng, R. Cao, Y. Wang, S. Zhang, Z. Li, L. Sun,              and Computer Assisted Intervention–MICCAI 2019: 22nd International
+     Y. Zang, and P. Mao, “Sam-adapter: Adapting segment anything in                  Conference, Shenzhen, China, October 13–17, 2019, Proceedings, Part
+     underperformed scenes,” in Proceedings of the IEEE/CVF International             IV 22, pp. 540–548, Springer, 2019.
+     Conference on Computer Vision, pp. 3367–3375, 2023.                         [30] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez,
+[10] H. Fu, F. Li, Y. Xu, J. Liao, J. Xiong, J. Shen, J. Liu, X. Zhang,               Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” Advances in
+     iChallenge-GON study group, et al., “A retrospective comparison of               neural information processing systems, vol. 30, 2017.
+     deep learning to manual annotations for optic disc and optic cup            [31] K. Clark, B. Vendt, K. Smith, J. Freymann, J. Kirby, P. Koppel,
+     segmentation in fundus photographs,” Translational vision science &              S. Moore, S. Phillips, D. Maffitt, M. Pringle, et al., “The cancer
+     technology, vol. 9, no. 2, pp. 33–33, 2020.                                      imaging archive (tcia): maintaining and operating a public information
+[11] L. Joskowicz, D. Cohen, N. Caplan, and J. Sosna, “Inter-observer                 repository,” Journal of digital imaging, vol. 26, no. 6, pp. 1045–1057,
+     variability of manual contour delineation of structures in ct,” European         2013.
+     radiology, vol. 29, pp. 1391–1399, 2019.                                    [32] H. Fang, F. Li, J. Wu, H. Fu, X. Sun, J. Son, S. Yu, M. Zhang,
+[12] D. Karimi, H. Dou, S. K. Warfield, and A. Gholipour, “Deep learning              C. Yuan, C. Bian, et al., “Refuge2 challenge: A treasure trove for
+     with noisy labels: Exploring techniques and remedies in medical image            multi-dimension analysis and evaluation in glaucoma screening,” arXiv
+     analysis,” Medical image analysis, vol. 65, p. 101759, 2020.                     preprint arXiv:2202.08994, 2022.
+[13] Z. Liao, Y. Xie, S. Hu, and Y. Xia, “Learning from ambiguous labels         [33] B. Menze, B. S. Joskowicz, A. Jakab, E. Konukoglu, and A. Becker,
+     for lung nodule malignancy prediction,” IEEE Transactions on Medical             “Quantification of uncertainties in biomedical image quantification chal-
+     Imaging, vol. 41, no. 7, pp. 1874–1884, 2022.                                    lenge at miccai. 2020.”
+[14] Y. Wu, X. Luo, Z. Xu, X. Guo, L. Ju, Z. Ge, W. Liao, and J. Cai,            [34] J. Zhu, A. Hamdi, Y. Qi, Y. Jin, and J. Wu, “Medical sam 2: Segment
+     “Diversified and personalized multi-rater medical image segmentation,”           medical images as video via segment anything model 2,” arXiv preprint
+     in Proceedings of the IEEE/CVF Conference on Computer Vision and                 arXiv:2408.00874, 2024.
+     Pattern Recognition, pp. 11470–11479, 2024.                                 [35] O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks
+[15] F. X. Erick, M. Rezaei, J. P. Müller, and B. Kainz, “Uncertainty-               for biomedical image segmentation,” in Medical Image Computing
+     aware vision transformers for medical image analysis,” in International          and Computer-Assisted Intervention–MICCAI 2015: 18th International
+     Workshop on Uncertainty for Safe Utilization of Machine Learning in              Conference, Munich, Germany, October 5-9, 2015, Proceedings, Part III
+     Medical Imaging, pp. 171–180, Springer, 2024.                                    18, pp. 234–241, Springer, 2015.
+[16] M. Schaekermann, G. Beaton, M. Habib, A. Lim, K. Larson, and E. Law,        [36] G. Deng, K. Zou, K. Ren, M. Wang, X. Yuan, S. Ying, and H. Fu,
+     “Understanding expert disagreement in medical data analysis through              “Sam-u: Multi-box prompts triggered uncertainty estimation for reliable
+     structured adjudication,” Proceedings of the ACM on Human-Computer               sam in medical image,” in International Conference on Medical Image
+     Interaction, vol. 3, no. CSCW, pp. 1–23, 2019.                                   Computing and Computer-Assisted Intervention, pp. 368–377, Springer,
+[17] W. Ji, S. Yu, J. Wu, K. Ma, C. Bian, Q. Bi, J. Li, H. Liu, L. Cheng, and         2023.
+     Y. Zheng, “Learning calibrated medical image segmentation via multi-        [37] B. Lakshminarayanan, A. Pritzel, and C. Blundell, “Simple and scalable
+     rater agreement modeling,” in Proceedings of the IEEE/CVF Conference             predictive uncertainty estimation using deep ensembles,” Advances in
+     on Computer Vision and Pattern Recognition, pp. 12341–12351, 2021.               neural information processing systems, vol. 30, 2017.
+[18] S. Kohl, B. Romera-Paredes, C. Meyer, J. De Fauw, J. R. Ledsam,             [38] L. Zbinden, L. Doorenbos, T. Pissas, A. T. Huber, R. Sznitman, and
+     K. Maier-Hein, S. Eslami, D. Jimenez Rezende, and O. Ronneberger, “A             P. Márquez-Neila, “Stochastic segmentation with conditional categori-
+     probabilistic u-net for segmentation of ambiguous images,” Advances in           cal diffusion models,” in Proceedings of the IEEE/CVF International
+     neural information processing systems, vol. 31, 2018.                            Conference on Computer Vision, pp. 1119–1129, 2023.
+[19] I. Bhat, J. P. Pluim, M. A. Viergever, and H. J. Kuijf, “Effect of latent   [39] J. Wu, R. Fu, H. Fang, Y. Zhang, Y. Yang, H. Xiong, H. Liu, and Y. Xu,
+     space distribution on the segmentation of images with multiple annota-           “Medsegdiff: Medical image segmentation with diffusion probabilistic
+     tions,” Machine Learning for Biomedical Imaging, vol. 2, p. 151–171,             model,” in Medical Imaging with Deep Learning, pp. 1623–1639,
+     Apr. 2023.                                                                       PMLR, 2024.
+

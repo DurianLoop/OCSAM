@@ -1,49 +1,96 @@
-# SAM Medical Segmentation Workspace
+# OCSAM: Medical SAM Prompt Workbench
 
-这是医学图像分割复现与入门实验工作区。当前重点是围绕 SAM、MedSAM、Matcher、SAM2/SAM3 等模型，完成源码拉取、模型准备、GPU 环境配置、批量评测和 demo 展示。
+OCSAM 是一个面向医学图像和视频分割的 SAM 系列复现与实验工作台。当前重点是把 SAM、MedSAM、SAM2、Matcher、SAM3 等方法统一到同一个 promptable segmentation 页面中，并进一步围绕医学图像的自动提示、提示鲁棒性和不确定性分析设计可发表的小项目实验。
 
-## 快速入口
+![OCSAM Prompt Workbench](assets/img.png)
 
-激活 GPU 环境：
+## 当前能力
+
+- 统一网页工作台：图像、视频、点击、框选、文本、Matcher reference prompt。
+- 模型入口：SAM ViT-B、MedSAM ViT-B、SAM2.1 Tiny、SAM3、Matcher one-shot。
+- 视频模式：SAM2 首帧点击/框选提示后传播。
+- Matcher 模式：参考图像 + 可选参考 mask；没有 mask 时使用 reference box 生成矩形支持掩码。
+- 研究文档：Phase 1 复现实验台、Phase 2 benchmark 设计、paper2/paper3 阅读笔记。
+
+## 快速启动
+
+在 PowerShell 中运行：
 
 ```powershell
-cd D:\SAM
-.\activate_sam_env.ps1
+Set-Location D:\SAM\code
+D:\SAM\conda_envs\sam_gpu\python.exe -B demos\medical_sam_click_app.py --host 127.0.0.1 --port 7860
 ```
 
-运行当前批量评测：
-
-```powershell
-cd D:\SAM\code
-python demos\medical_sam_batch_eval.py --dataset all --max-side 512 --out-dir demo_outputs\medical_sam_batch_eval_full_v2
-```
-
-查看最新批量结果：
+浏览器打开：
 
 ```text
-D:\SAM\code\demo_outputs\medical_sam_batch_eval_full_v2\README.md
-D:\SAM\code\demo_outputs\medical_sam_batch_eval_full_v2\index.html
-D:\SAM\code\demo_outputs\medical_sam_batch_eval_full_v2\metrics.csv
-D:\SAM\code\demo_outputs\medical_sam_batch_eval_full_v2\summary.json
+http://127.0.0.1:7860
+```
+
+如果端口被占用，可以换成其他端口：
+
+```powershell
+D:\SAM\conda_envs\sam_gpu\python.exe -B demos\medical_sam_click_app.py --host 127.0.0.1 --port 7865
 ```
 
 ## 目录说明
 
 | 路径 | 作用 |
-|---|---|
-| `code` | 当前主要工作仓库，包含改造后的 Matcher/SAM 医学分割代码、数据、demo、批量评测输出 |
-| `Matcher` | Matcher 官方源码干净副本，用来对照论文和原始实现 |
-| `assets/checkpoints` | 统一模型权重目录，保存 SAM、DINOv2、Matcher/IDRID 相关权重 |
-| `conda_envs/sam_gpu` | GPU 版 conda 环境，PyTorch CUDA 可用 |
-| `docs/papers` | 已下载论文 PDF |
-| `docs/workspace` | 环境、布局和工作区说明文档 |
-| `docs/setup_legacy` | 早期安装记录和旧 requirements，作为历史参考 |
-| `.cache` | 工作区本地缓存，主要给 matplotlib 使用 |
+| --- | --- |
+| `code/demos/medical_sam_click_app.py` | 当前 FastAPI + Canvas 统一网页工作台 |
+| `code/demos/matcher_oneshot_worker.py` | Matcher one-shot 子进程封装 |
+| `code/adapters/` | SAM、MedSAM、SAM2、SAM3、Matcher 的统一适配器接口声明 |
+| `code/workbench/` | 工作台模型注册、样本扫描和页面数据源 |
+| `assets/img.png` | README 使用的 OCSAM 工作台截图 |
+| `assets/checkpoints/` | 本地模型权重目录，默认不提交到 Git |
+| `docs/phase1_reproduction_workbench.md` | 第一阶段：复现实验台 |
+| `docs/phase2_benchmark_plan.md` | 第二阶段第一版 benchmark 草案 |
+| `docs/phase2_reconstructed_from_papers.md` | 阅读 paper2 后重构的 Phase 2 方案 |
+| `docs/papers3/README.md` | 更适合小项目发表的 SAM 医学分割论文中文笔记 |
 
-`code\models` 和 `Matcher\models` 现在是 junction，指向同一份 `assets\checkpoints`。这样代码里原来的 `models/sam_vit_b.pth` 路径还能用，同时避免三份大模型重复占空间。
+## 当前推荐研究路线
 
-更详细的说明见：
+我们不优先追求“做一个更大的 SAM”，而是聚焦一个更适合 BIBM/MICCAI 风格小项目的方向：
 
 ```text
-D:\SAM\docs\workspace\WORKSPACE_GUIDE.md
+结构感知自动 prompt + prompt 扰动不确定性 + SAM/MedSAM/SAM2 refinement
 ```
+
+核心想法：
+
+1. 从医学图像粗候选区域中自动生成 prompt，例如中心点、网格点、box。
+2. 对 prompt 做扰动，得到多次 SAM 系列模型输出。
+3. 用 mask variance / entropy 构建 prompt-induced uncertainty。
+4. 根据不确定性选择更稳定的 mask，或标记需要人工修正的区域。
+
+更稳的论文表述：
+
+```text
+We improve the reliability and interaction efficiency of SAM-style medical segmentation by structure-aware automatic prompting and prompt-induced uncertainty estimation.
+```
+
+## 建议下一步
+
+先做最小闭环实验：
+
+```text
+数据集：IDRID 20 张 + MonuSeg 20 张
+模型：SAM ViT-B / MedSAM / SAM2 Tiny
+提示：GT box / perturbed box / auto centroid point / auto grid point / auto box
+指标：Dice / IoU / Boundary F1 / Prompt sensitivity / Runtime
+```
+
+完成后再补强基线：
+
+```text
+SAM ViT-H
+SAM2 stronger checkpoint
+SAM3 text prompt
+Matcher reference prompt
+```
+
+## 注意事项
+
+- `conda_envs/`、`assets/checkpoints/`、数据集、模型权重和评测输出默认不提交到 Git。
+- `SAM ViT-B` 和 `SAM2.1 Tiny` 更适合交互 demo，不代表最强基线。
+- 正式 benchmark 前应补充强权重核查，避免低估 SAM/SAM2 家族上限。

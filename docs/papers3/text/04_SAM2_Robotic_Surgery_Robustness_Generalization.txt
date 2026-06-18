@@ -1,0 +1,523 @@
+                                           SAM 2 in Robotic Surgery: An Empirical
+                                        Evaluation for Robustness and Generalization in
+                                                 Surgical Video Segmentation
+
+                                             Jieming Yu1,2,3 , An Wang1,2 , Wenzhen Dong1,2 , Mengya Xu1,3 , Mobarakol
+                                                    Islam4 , Jie Wang2 , Long Bai1,2 ⋆ , and Hongliang Ren1,2 ⋆⋆
+arXiv:2408.04593v1 [cs.CV] 8 Aug 2024
+
+
+
+
+                                         1
+                                             Dept. of Electronic Engineering, The Chinese University of Hong Kong (CUHK),
+                                                                        Hong Kong SAR, China
+                                                        2
+                                                          Shenzhen Research Institute, CUHK, Shenzhen, China
+                                            3
+                                              Dept. of Computer Science and Engineering, CUHK, Hong Kong SAR, China
+                                         4
+                                             Dept. of Medical Physics and Biomedical Engineering, Wellcome/EPSRC Centre
+                                           for Interventional and Surgical Sciences, University College London, London, UK
+                                            ireneyu1024@gmail.com, b.long@link.cuhk.edu.hk, hlren@ee.cuhk.edu.hk
+
+
+
+                                                 Abstract. The recent Segment Anything Model (SAM) 2 has demon-
+                                                 strated remarkable foundational competence in semantic segmentation,
+                                                 with its memory mechanism and mask decoder further addressing chal-
+                                                 lenges in video tracking and object occlusion, thereby achieving superior
+                                                 results in interactive segmentation for both images and videos. Build-
+                                                 ing upon our previous empirical studies, we further explore the zero-
+                                                 shot segmentation performance of SAM 2 in robot-assisted surgery based
+                                                 on prompts, alongside its robustness against real-world corruption. For
+                                                 static images, we employ two forms of prompts: 1-point and bounding
+                                                 box, while for video sequences, the 1-point prompt is applied to the ini-
+                                                 tial frame. Through extensive experimentation on the MICCAI EndoVis
+                                                 2017 and EndoVis 2018 benchmarks, SAM 2, when utilizing bounding
+                                                 box prompts, outperforms state-of-the-art (SOTA) methods in compara-
+                                                 tive evaluations. The results with point prompts also exhibit a substantial
+                                                 enhancement over SAM’s capabilities, nearing or even surpassing exist-
+                                                 ing unprompted SOTA methodologies. Besides, SAM 2 demonstrates im-
+                                                 proved inference speed and less performance degradation against various
+                                                 image corruption. Although slightly unsatisfactory results remain in spe-
+                                                 cific edges or regions, SAM 2’s robust adaptability to 1-point prompts un-
+                                                 derscores its potential for downstream surgical tasks with limited prompt
+                                                 requirements.
+
+
+                                        1      Introduction
+                                        Surgical instrument segmenting and tracking is a significant topic, with its rich
+                                        representation contributing to the development of various downstream applica-
+                                        tions [5,19,28]. Unfortunately, due to a lack of large-scale surgical data, the efforts
+                                        ⋆
+                                             Project Lead.
+                                        ⋆⋆
+                                             Corresponding Author.
+2         J. Yu et al.
+
+toward surgical foundational models are significantly lagging compared to gen-
+eral computer vision. Specifically, the acquisition and annotation of high-quality
+surgical data require expensive resources and human labor, while synthetic data
+training falls short of distribution diversity and real-world applications.
+    The segmentation foundation models, which are trained on more than one
+billion masks, have made great progress in the field of natural image segmen-
+tation, but tend to fail in common medical scenarios because of the large do-
+main gap [6,8,10,17]. To tackle this issue, researchers have adapted Segmen-
+tation Attention Models (SAM) [16] from general 2D vision to medical appli-
+cations, capitalizing on the rich, diverse pre-trained data through Parameter-
+Efficient Fine-Tuning (PEFT) techniques such as adapters or low-rank adapta-
+tions (LoRA) [11]. For example, the Med-SAM-Adapter [29] leverages medical-
+specific domain knowledge to refine segmentation models effectively, via a sim-
+ple yet effective adapter. Similarly, SAMed [31] employs a low-rank finetuning
+strategy on both the image encoder and the prompt encoder, alongside the mask
+decoder, for medical image segmentation tasks. Furthermore, a series of works
+have been proposed for automating prompts and fine-tuning SAM models to
+perform end-to-end semantic segmentation tasks in surgical scenarios, including
+two-stage strategy [30], text prompt [20], automating bounding box prompt [24],
+and feature matching [18].
+    The recently introduced SAM 2 [21], leveraging the unique memory mech-
+anism and mask decoder, has demonstrated notable superiority in effectiveness
+and efficiency over its previous version. SAM 2 successfully manages complex
+scenarios characterized by detailed anatomical structures, motion, and occlu-
+sion, thereby enhancing the model’s reliability across a more extensive array of
+applications. Benefiting from SAM 2’s robust capability in handling complex
+scenarios, it demonstrates significant potential in processing surgical scene data.
+Consequently, it is necessary to evaluate the performance of SAM 2 in medical
+contexts and its robustness under real-world corruption for further investigation.
+    Following our previous work on SAM [27]5 , we assess the generalizability of
+SAM 2 across various operational scenarios. Specifically, our contributions and
+findings can be summarized as:
+    – We conduct a comprehensive empirical study on surgical images and videos
+      based on SAM 2. For surgical images, we use the bounding box or 1-point
+      as the prompt input; for videos, we prompt 1 point in the first frame. The
+      results indicate that SAM 2 overall outperforms its previous version.
+    – By using bounding boxes as prompts, SAM 2 has become the new state-
+      of-the-art (SOTA) in the surgical domain. Surprisingly, in video segmen-
+      tation, SAM 2, which applies the 1-point prompt only in the first frame,
+      demonstrated superior performance compared to SAM with images using
+      the 1-point prompt for every frame.
+    – We further evaluate the robustness of SAM 2 by analyzing its performance
+      on synthetic surgical datasets, which include diverse levels of corruption and
+      perturbations. With bounding boxes as prompts, SAM 2 on images exhibited
+5
+    https://arxiv.org/abs/2308.07156
+                                                                            SAM 2 in Robotic Surgery                          3
+
+     robust resistance to real-world corruption, showing minimal performance
+     degradation when faced with challenges such as image compression, noise,
+     blur, and occlusion.
+
+
+Table 1. Quantitative comparison of binary and instrument segmentation on En-
+doVis17 and EndoVis18 datasets. For SAM 2, we present the results in images and
+videos.
+
+                                                                                  EndoVis17                 EndoVis18
+        Type            Method           Pub/Year(20-)      Arch.
+                                                                        Binary IoU Instrument IoU Binary IoU Instrument IoU
+                     Vanilla UNet         MICCAI15          UNet          75.44          15.80      68.89            -
+                     TernausNet           ICMLA18           UNet          83.60          35.27        -            46.22
+     Single-Task     MF-TAPNet            MICCAI19          UNet          87.56          37.35        -            67.87
+                      Islam et al.         RA-L19             -           84.50            -          -              -
+                         ISINet           MICCAI21          Res50           -            55.62        -            73.03
+                      Wang et al.         MICCAI22          UNet            -              -        58.12            -
+                       ST-MTL              MedIA21             -          83.49            -          -              -
+                       AP-MTL              ICRA20              -          88.75            -          -              -
+     Multi-Task         S-MTL              RA-L22              -            -              -          -            43.54
+                       TraSeTR             ICRA22        Res50 + Trfm       -            60.40        -            76.20
+                        S3Net              WACV23           Res50           -            72.54        -            75.81
+                    SAM (1 Point)           arxiv23         ViT h         53.88         55.96*      57.12         54.30*
+                     SAM (Box)              arxiv23         ViT h         89.19         88.20*      89.35         81.09*
+    Prompt-based SAM 2-Image (1 Point)      arxiv24         ViT h         84.96         81.10*      77.14         73.76*
+                  SAM 2-Image (Box)         arxiv24         ViT h         90.97         86.92*      90.18         81.97*
+                 SAM 2-Video (1 Point)      arxiv24         ViT h         62.45         58.74*      65.19         57.59*
+
+    * Categorical information directly inherits from associated prompts.
+
+
+
+
+Table 2. Comparison of inference speed (fps) of SAM and SAM 2 on EndoVis18 [1].
+Experiments are conducted on 1 RTX 3090 GPU, with Pytorch 2.4 and CUDA 12.1.
+
+                                                 Model Point Box
+                                                  SAM 2.95 3.04
+                                                 SAM 2 8.75 8.94
+
+
+
+
+2     Surgical Instruments Segmentation with Prompts
+Implementation MICCAI EndoVis17 [2] and EndoVis18 [1] are used for our
+evaluation and we follow all the validation set splitting in [27]. For images,
+we utilize either a single point or a bounding box as prompts. For videos, we
+employ a single point from the initial frame as the prompt. The bounding box
+originates from manual annotations in our previous work [4], while the single
+point is derived by calculating the centroid of the corresponding mask. Since
+the output of SAM 2 does not contain class information, we directly assign the
+class information from the input prompt to the output mask to prevent poor
+performance caused by incorrect class information.
+4      J. Yu et al.
+
+               Input            GT           Box Prompt      Point Prompt
+
+
+
+
+     Fig. 1. Qualitative results of SAM 2 on three images of the surgical scene.
+
+
+
+Comparison methods We follow the comparison methods in our previous ver-
+sion as follows: vanilla UNet [22], TernausNet [25], MF-TAPNet [15], Islam et
+al. [12], Wang et al. [26], ST-MTL [13], S-MTL [23], AP-MTL [14], ISINet [7],
+TraSeTR [32], and S3Net [3] for surgical binary and instrument-wise segmen-
+tation. The SAM results are adopted from [27], and we use the SAM 2-Hiera-
+Large [16] for our evaluation. It is important to note that a completely fair
+comparison cannot be achieved, as existing methods do not require prompts
+during inference.
+
+
+Results and Analysis Overall, SAM 2 [21] demonstrates better performance
+compared to SAM [16] in Table 1 and 2. The results using the bounding box
+prompt maintain SOTA performance over previous unprompted methods, but
+its improvement on SAM [16] is not significant. In terms of the 1-point prompt,
+SAM 2 [21] exhibits substantial enhancements, with overall performance increas-
+ing by 20%–30%. Furthermore, SAM 2 [21] possesses an inference speed more
+than twice that of SAM [16], greatly benefiting practical clinical applications;
+doctors can simply click, and the model quickly provides results for the corre-
+sponding targets in the images.
+     Additionally, in SAM 2, we compare the differences in the segmentation re-
+sults between video and image when using a 1-point prompt. The performance
+of video segmentation, with only the first frame prompt, is lower than that of
+image segmentation. The results are consistent with the results presented in the
+SAM 2 technical report, since the image segmentation task will get more prompt
+information – the 1-point prompt will be applied at each frame. However, de-
+spite this, the video segmentation results with the 1-point prompt in SAM 2
+still outperform the previous SAM image segmentation results using the 1-point
+prompt, enabling satisfactory results for downstream applications.
+                                                                                                                        SAM 2 in Robotic Surgery                               5
+
+Table 3. Quantitative results on various corrupted EndoVis18 validation data.The
+prompts used by SAM-Image Segmentation, SAM 2-Image Segmentation, and SAM
+2-Video Segmentation are bounding box, bounding box, and point, respectively.
+
+                                                                 Noise                             Blur                           Weather                       Digital
+Task                                       Severity
+                                                      Gaussian Shot Impulse Speckle Defocus Glass Motion Zoom Gaussian Snow Frost Fog Bright Spatter Contrast Pixel JPEG Saturate
+                                              0                                                                 89.35
+ SAM - Image Segmentation
+
+
+
+
+                                              1        77.69 80.18 80.43 83.28 82.01 80.53 82.99 80.30 85.40 84.08 83.12 85.38 87.43 86.69            85.76 81.12 58.77 86.64
+                              Binary
+
+
+
+
+                                              2        73.92 76.07 76.15 81.65 80.21 79.20 80.22 77.55 81.69 80.69 80.34 84.65 87.27 84.21            84.90 79.32 56.04 84.85
+                                              3        69.21 71.74 73.02 77.74 76.96 72.64 75.50 75.27 78.31 79.58 78.90 83.62 87.23 82.50            83.36 73.81 56.25 86.84
+                                              4        63.80 65.41 67.29 75.28 73.79 72.38 69.60 73.22 75.23 76.33 78.38 82.28 87.06 83.12            77.12 70.82 57.59 83.21
+                                              5        57.07 60.61 61.61 71.83 69.85 69.59 66.25 71.58 66.96 77.66 76.82 78.84 86.43 79.62            66.58 68.55 56.77 81.26
+                                              0                                                                 81.09
+                              Instrument
+
+
+
+
+                                              1        69.51 71.83 72.25 74.82 73.64 72.13 74.33 71.41 76.79 75.40 74.42 76.82 79.16 78.24            77.17 72.94 54.86 78.27
+                                              2        66.06 68.09 68.53 73.19 71.74 71.02 71.46 68.85 73.15 72.13 71.65 76.14 79.00 75.54            76.22 71.55 52.23 76.61
+                                              3        62.01 64.44 65.89 69.75 68.74 64.97 67.13 67.12 70.08 70.97 70.21 75.01 78.90 73.70            74.67 66.83 51.63 78.39
+                                              4        57.28 59.12 61.03 67.82 65.87 64.87 62.15 65.18 67.23 68.43 69.79 73.73 78.73 74.24            69.48 63.99 51.88 74.91
+                                              5        51.56 55.16 55.86 64.76 62.43 62.23 59.26 63.96 60.60 69.33 68.32 70.45 78.19 70.72            61.14 61.79 51.01 73.35
+                                              0                                                                 90.18
+ SAM 2 - Image Segmentation
+
+
+
+
+                                              1        85.20 86.24 85.20 87.69 85.53 84.95 85.46 81.83 87.34 87.81 89.50 87.36 88.96 88.63            87.79 86.92 85.68 88.80
+                              Binary
+
+
+
+
+                                              2        82.04 83.69 82.38 86.77 83.93 84.43 82.71 79.18 85.39 85.06 89.48 86.88 88.96 87.78            87.31 86.39 83.58 88.01
+                                              3        77.35 80.01 80.19 83.94 81.56 79.16 78.72 77.12 83.09 85.20 89.43 85.34 88.90 87.13            86.13 83.24 82.33 88.54
+                                              4        72.75 74.65 75.99 81.91 79.31 79.41 74.01 75.24 80.75 83.30 89.42 84.05 88.90 87.23            82.08 80.75 74.81 86.61
+                                              5        68.09 71.30 71.47 79.56 77.06 78.07 71.52 73.40 76.55 83.04 89.46 80.70 88.61 85.28            72.93 78.78 65.16 84.96
+                                              0                                                                 81.97
+                              Instrument
+
+
+
+
+                                              1        76.61 77.56 76.58 79.24 76.99 76.47 76.95 72.99 78.96 79.33 81.21 78.93 80.73 80.39            79.39 78.39 77.00 80.50
+                                              2        73.76 75.25 74.19 78.29 75.37 75.97 74.21 70.30 76.69 76.40 81.12 78.20 80.75 79.56            78.71 77.88 74.91 79.62
+                                              3        69.65 72.02 72.20 75.57 72.85 70.72 70.14 68.64 74.25 76.74 81.00 76.72 80.73 78.76            77.44 74.78 73.72 80.39
+                                              4        65.68 67.47 68.61 73.97 70.63 70.98 65.88 67.00 72.04 74.71 81.00 75.61 80.79 78.75            73.72 72.39 67.18 78.45
+                                              5        61.44 64.25 64.34 71.99 68.53 69.52 63.56 65.70 68.24 74.76 81.04 72.62 80.55 76.66            65.79 70.83 58.93 77.10
+                                              0                                                                 65.19
+ SAM 2 - Video Segmentation
+
+
+
+
+                                              1        60.36 58.86 23.57 63.22 55.76 71.84 60.07 53.31 62.74 50.52 70.92 58.47 65.10 72.62            62.87 60.63 57.53 64.71
+                              Binary
+
+
+
+
+                                              2        43.53 60.07 26.01 54.63 52.33 64.71 50.44 64.93 55.77 45.60 71.82 66.17 72.26 68.72            63.42 66.21 49.61 63.37
+                                              3        31.64 40.17 34.03 52.60 48.08 57.57 47.44 60.00 53.22 43.29 69.59 59.88 70.37 65.78            51.68 42.22 51.51 68.40
+                                              4        20.54 23.87 30.87 46.71 57.18 61.08 53.64 58.31 50.67 44.38 70.52 56.90 72.30 58.02            50.86 42.24 47.94 45.04
+                                              5        18.45 18.73 21.75 33.14 55.21 57.92 46.85 57.40 34.01 43.38 70.42 38.73 64.67 60.73            25.44 37.81 39.39 57.04
+                                              0                                                                 57.59
+                              Instrument
+
+
+
+
+                                              1        48.09 50.67 19.96 56.22 42.55 58.50 47.62 41.00 49.44 43.92 58.12 46.45 56.92 58.80            52.42 54.80 46.13 55.64
+                                              2        37.18 49.89 20.43 48.89 40.56 41.95 44.26 42.45 44.20 38.90 57.69 54.17 62.65 58.77            50.86 60.96 38.71 52.41
+                                              3        28.82 37.78 29.80 41.97 38.73 47.11 46.29 45.92 40.59 31.40 55.53 48.24 56.10 54.22            40.19 42.59 43.53 58.02
+                                              4        15.47 16.06 24.24 36.74 45.70 48.94 43.36 44.94 35.05 37.68 56.61 40.14 57.63 52.65            36.11 30.11 34.76 39.73
+                                              5         9.30 13.21 15.60 26.89 40.97 45.50 36.27 39.54 19.01 37.36 56.22 29.38 51.90 54.11            12.77 24.34 27.43 46.64
+
+
+
+
+3                                          Robustness under Data Corruption
+
+Implementation We introduce image perturbations to evaluate robustness
+against input variations and analyze performance discrepancies. According to
+the robustness evaluation benchmark [9], SAM [16] and SAM 2 [21] underwent
+assessment across 18 types of data corruptions spanning 5 severity levels, follow-
+ing the official implementations6 . Specifically, these data corruptions are (i) Blur
+(defocus, glass, motion, zoom, Gaussian); (ii) Digital (contrast, pixel, jpeg); and
+(iii) Noise (Gaussian, Shot, Impulse, Speckle); (iv) Weather (snow, frost, fog,
+brightness); (v) Others (spatter, saturate). The exclusion of the Elastic Trans-
+formation was necessary to ensure alignment between input images and their
+corresponding masks.
+
+
+Results and Analysis The extent of data corruption correlates directly with
+the degradation in the performance of SAM [16] and SAM 2 [21], as illustrated in
+Table 3. SAM-Image Segmentation and SAM 2-Image Segmentation use bound-
+ing box prompts. Considering that SAM 2 [21] does not offer bounding boxes as
+the prompt interface, SAM 2-Video Segmentation employs point prompts.
+6
+                          https://github.com/hendrycks/robustness
+6       J. Yu et al.
+
+
+                                             Original Input    GT
+
+
+
+
+        Corrupted
+        SAM BBox
+        SAM2        Gauss. Noise    Shot        Impulse       Speckle   Defocus    Glass
+
+
+
+
+                      Motion       Zoom       Gauss. Blur     Snow       Frost      Fog
+        Corrupted
+        SAM BBox
+        SAM2
+
+
+
+
+                    Brightness     Spatter     Contrast        Pixel    JPEG      Saturate
+        Corrupted
+        SAM BBox
+        SAM2
+
+
+
+
+Fig. 2. Qualitative results of SAM 2 under 18 data corruptions of level-5 severity. Given
+that the implementation of specific transformations (e.g., spatter) relies on random
+functions, and the corrupted dataset in our previous version is no longer accessible, we
+have regenerated the corrupted images. While some types of images may exhibit slight
+variations, the overall statistical consistency ensures the reliability of our findings.
+
+
+    The robustness of SAM [16] and SAM 2 [21] can vary depending on the type
+of corruption, but generally, the performance tends to decline noticeably. Par-
+                                                 SAM 2 in Robotic Surgery        7
+
+ticularly, for SAM [16], JPEG Compression and Gaussian Noise exert the most
+pronounced effects on segmentation performance, whereas Brightness has mini-
+mal impact. When subjected to identical levels and types of corruption, SAM 2
+demonstrates less performance degradation compared to SAM, indicating that
+SAM 2 exhibits greater robustness than SAM. However, SAM 2 and SAM main-
+tained consistency in the most and least affected corruption types. Specifically,
+Gaussian Noise, JPEG Compression and Zoom significantly affect the segmen-
+tation performance of SAM 2, whereas Brightness has a minor influence. SAM
+2-Video Segmentation has the worst robustness. This is reflected in the fact
+that its performance degrades more than SAM-Image Segmentation and SAM
+2-Image Segmentation when faced with corrupted images. Especially when faced
+with corrupted images with a severity level of 5, its performance drops sharply.
+This may be because point prompts, although more convenient, make the model
+unable to track tools well and cope with complex variations. Figure 2 displays
+an initial frame alongside several altered versions under severity level 5. It is
+evident from the images that SAM [16] and SAM 2 [21] experience significant
+performance degradation across most scenarios.
+
+
+4   Conclusion
+
+In this empirical study, we build upon prior work [27] by further investigating
+the zero-shot capabilities and data corruption robustness of SAM 2 [21] in se-
+mantic segmentation for robot-assisted surgery. Our analysis is primarily based
+on two types of prompts: single point and bounding box. Under the bound-
+ing box prompt, SAM 2 [21] maintains the exceptional performance observed
+in SAM [16], achieving SOTA results with slight improvements over SAM [16].
+In contrast, the 1-point prompt results from SAM [16] exhibited subpar perfor-
+mance, making precise segmentation of surgical instruments challenging. How-
+ever, SAM 2 [21] demonstrates high performance with the 1-point prompt, pro-
+ducing satisfactory inference results compared to previous work – even with this
+simple prompting approach, which significantly advances downstream applica-
+tions. Furthermore, in video segmentation, although we only employ a single
+point from the initial frame as the prompt, SAM 2 [21] exhibits better results
+than SAM [16]’s image segmentation, which utilizes the 1-point prompt for each
+frame. When encountering various types of image quality corruption, SAM 2 [21]
+also demonstrates less performance degradation compared to SAM [16], high-
+lighting its exceptional ability to handle complex scenarios including occlusions,
+noise, blur, and other challenges in downstream tasks for robotic-assisted surgery.
+    Nevertheless, SAM 2 [21] still faces certain limitations, such as suboptimal
+segmentation performance in some edge cases or regions. Future work may focus
+on the development of automated, prompt-free methods for automated segmen-
+tation in surgical settings. Exploring ways for the SAM model to better com-
+prehend the textual representations corresponding to images would also be an
+interesting avenue of research.
+8       J. Yu et al.
+
+Acknowledgements. This work was supported by Hong Kong Research Grants
+Council (RGC) Collaborative Research Fund (CRF C4026-21GF), General Re-
+search Fund (GRF 14203323, GRF 14216022, and GRF 14211420), NSFC/RGC
+Joint Research Scheme N CUHK420/22; Shenzhen-Hong Kong-Macau Technol-
+ogy Research Programme (Type C) STIC Grant 202108233000303.
+
+
+References
+
+ 1. Allan, M., Kondo, S., Bodenstedt, S., Leger, S., Kadkhodamohammadi, R., Luengo,
+    I., Fuentes, F., Flouty, E., Mohammed, A., Pedersen, M., et al.: 2018 robotic scene
+    segmentation challenge. arXiv preprint arXiv:2001.11190 (2020)
+ 2. Allan, M., Shvets, A., Kurmann, T., Zhang, Z., Duggal, R., Su, Y.H., Rieke, N.,
+    Laina, I., Kalavakonda, N., Bodenstedt, S., et al.: 2017 robotic instrument segmen-
+    tation challenge. arXiv preprint arXiv:1902.06426 (2019)
+ 3. Baby, B., Thapar, D., Chasmai, M., Banerjee, T., Dargan, K., Suri, A., Banerjee,
+    S., Arora, C.: From forks to forceps: A new framework for instance segmentation
+    of surgical instruments. In: Proceedings of the IEEE/CVF Winter Conference on
+    Applications of Computer Vision. pp. 6191–6201 (2023)
+ 4. Bai, L., Islam, M., Seenivasan, L., Ren, H.: Surgical-vqla: Transformer with
+    gated vision-language embedding for visual question localized-answering in robotic
+    surgery. In: 2023 IEEE International Conference on Robotics and Automation
+    (ICRA). pp. 6859–6865. IEEE (2023)
+ 5. Baste, J.M., Soldea, V., Lachkar, S., Rinieri, P., Sarsam, M., Bottet, B., Peillon, C.:
+    Development of a precision multimodal surgical navigation system for lung robotic
+    segmentectomy. Journal of Thoracic Disease 10(Suppl 10), S1195 (2018)
+ 6. Deng, R., Cui, C., Liu, Q., Yao, T., Remedios, L.W., Bao, S., Landman, B.A.,
+    Wheless, L.E., Coburn, L.A., Wilson, K.T., et al.: Segment anything model (sam)
+    for digital pathology: Assess zero-shot segmentation on whole slide imaging. arXiv
+    preprint arXiv:2304.04155 (2023)
+ 7. González, C., Bravo-Sánchez, L., Arbelaez, P.: Isinet: an instance-based approach
+    for surgical instrument segmentation. In: Medical Image Computing and Computer
+    Assisted Intervention–MICCAI 2020: 23rd International Conference, Lima, Peru,
+    October 4–8, 2020, Proceedings, Part III 23. pp. 595–605. Springer (2020)
+ 8. He, S., Bao, R., Li, J., Grant, P.E., Ou, Y.: Accuracy of segment-anything model
+    (sam) in medical image segmentation tasks. arXiv preprint arXiv:2304.09324
+    (2023)
+ 9. Hendrycks, D., Dietterich, T.: Benchmarking neural network robustness to common
+    corruptions and perturbations. In: International Conference on Learning Represen-
+    tations (2019)
+10. Hu, C., Li, X.: When sam meets medical images: An investigation of segment
+    anything model (sam) on multi-phase liver tumor segmentation. arXiv preprint
+    arXiv:2304.08506 (2023)
+11. Hu, E.J., Shen, Y., Wallis, P., Allen-Zhu, Z., Li, Y., Wang, S., Wang, L.,
+    Chen, W.: Lora: Low-rank adaptation of large language models. arXiv preprint
+    arXiv:2106.09685 (2021)
+12. Islam, M., Atputharuban, D.A., Ramesh, R., Ren, H.: Real-time instrument seg-
+    mentation in robotic surgery using auxiliary supervised deep adversarial learning.
+    IEEE Robotics and Automation Letters 4(2), 2188–2195 (2019)
+                                                   SAM 2 in Robotic Surgery          9
+
+13. Islam, M., Vibashan, V., Lim, C.M., Ren, H.: St-mtl: Spatio-temporal multitask
+    learning model to predict scanpath while tracking instruments in robotic surgery.
+    Medical Image Analysis 67, 101837 (2021)
+14. Islam, M., Vibashan, V., Ren, H.: Ap-mtl: Attention pruned multi-task learn-
+    ing model for real-time instrument detection and segmentation in robot-assisted
+    surgery. In: 2020 IEEE international conference on robotics and automation
+    (ICRA). pp. 8433–8439. IEEE (2020)
+15. Jin, Y., Cheng, K., Dou, Q., Heng, P.A.: Incorporating temporal prior from motion
+    flow for instrument segmentation in minimally invasive surgery video. In: Medical
+    Image Computing and Computer Assisted Intervention–MICCAI 2019: 22nd In-
+    ternational Conference, Shenzhen, China, October 13–17, 2019, Proceedings, Part
+    V 22. pp. 440–448. Springer (2019)
+16. Kirillov, A., Mintun, E., Ravi, N., Mao, H., Rolland, C., Gustafson, L., Xiao, T.,
+    Whitehead, S., Berg, A.C., Lo, W.Y., et al.: Segment anything. arXiv preprint
+    arXiv:2304.02643 (2023)
+17. Ma, J., Wang, B.: Segment anything in medical images (2023)
+18. Murali, A., Mascagni, P., Mutter, D., Padoy, N.: Cyclesam: One-shot surgical
+    scene segmentation using cycle-consistent feature matching to prompt sam. arXiv
+    preprint arXiv:2407.06795 (2024)
+19. Pakhomov, D., Navab, N.: Searching for efficient architecture for instrument seg-
+    mentation in robotic surgery. In: Medical Image Computing and Computer Assisted
+    Intervention–MICCAI 2020: 23rd International Conference, Lima, Peru, October
+    4–8, 2020, Proceedings, Part III 23. pp. 648–656. Springer (2020)
+20. Paranjape, J.N., Nair, N.G., Sikder, S., Vedula, S.S., Patel, V.M.: Adaptivesam:
+    Towards efficient tuning of sam for surgical scene segmentation. In: Annual Confer-
+    ence on Medical Image Understanding and Analysis. pp. 187–201. Springer (2024)
+21. Ravi, N., Gabeur, V., Hu, Y.T., Hu, R., Ryali, C., Ma, T., Khedr, H., Rädle, R.,
+    Rolland, C., Gustafson, L., et al.: Sam 2: Segment anything in images and videos.
+    arXiv preprint arXiv:2408.00714 (2024)
+22. Ronneberger, O., Fischer, P., Brox, T.: U-net: Convolutional networks for biomed-
+    ical image segmentation. In: Medical Image Computing and Computer-Assisted
+    Intervention–MICCAI 2015: 18th International Conference, Munich, Germany, Oc-
+    tober 5-9, 2015, Proceedings, Part III 18. pp. 234–241. Springer (2015)
+23. Seenivasan, L., Mitheran, S., Islam, M., Ren, H.: Global-reasoned multi-task learn-
+    ing model for surgical scene understanding. IEEE Robotics and Automation Letters
+    7(2), 3858–3865 (2022)
+24. Sheng, Y., Bano, S., Clarkson, M.J., Islam, M.: Surgical-desam: decoupling sam
+    for instrument segmentation in robotic surgery. International Journal of Computer
+    Assisted Radiology and Surgery pp. 1–5 (2024)
+25. Shvets, A.A., Rakhlin, A., Kalinin, A.A., Iglovikov, V.I.: Automatic instrument
+    segmentation in robot-assisted surgery using deep learning. In: 2018 17th IEEE
+    International Conference on Machine Learning and Applications (ICMLA). pp.
+    624–628 (2018)
+26. Wang, A., Islam, M., Xu, M., Ren, H.: Rethinking surgical instrument segmen-
+    tation: A background image can be all you need. In: International Conference
+    on Medical Image Computing and Computer-Assisted Intervention. pp. 355–364.
+    Springer (2022)
+27. Wang, A., Islam, M., Xu, M., Zhang, Y., Ren, H.: Sam meets robotic surgery:
+    an empirical study on generalization, robustness and adaptation. In: International
+    Conference on Medical Image Computing and Computer-Assisted Intervention. pp.
+    234–244. Springer (2023)
+10      J. Yu et al.
+
+28. Wang, G., Bai, L., Wu, Y., Chen, T., Ren, H.: Rethinking exemplars for contin-
+    ual semantic segmentation in endoscopy scenes: Entropy-based mini-batch pseudo-
+    replay. Computers in Biology and Medicine 165, 107412 (2023)
+29. Wu, J., Fu, R., Fang, H., Liu, Y., Wang, Z., Xu, Y., Jin, Y., Arbel, T.: Medical
+    sam adapter: Adapting segment anything model for medical image segmentation.
+    arXiv preprint arXiv:2304.12620 (2023)
+30. Yu, J., Bai, L., Wang, G., Wang, A., Yang, X., Gao, H., Ren, H.: Adapting sam for
+    surgical instrument tracking and segmentation in endoscopic submucosal dissection
+    videos. arXiv preprint arXiv:2404.10640 (2024)
+31. Zhang, K., Liu, D.: Customized segment anything model for medical image seg-
+    mentation. arXiv preprint arXiv:2304.13785 (2023)
+32. Zhao, Z., Jin, Y., Heng, P.A.: Trasetr: track-to-segment transformer with con-
+    trastive query for instance-level instrument segmentation in robotic surgery. In:
+    2022 International Conference on Robotics and Automation (ICRA). pp. 11186–
+    11193. IEEE (2022)
+
