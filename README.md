@@ -12,13 +12,47 @@ OCSAM 是一个面向医学图像和视频分割的 SAM 系列复现与实验工
 - Matcher 模式：参考图像 + 可选参考 mask；没有 mask 时使用 reference box 生成矩形支持掩码。
 - 研究文档：Phase 1 复现实验台、Phase 2 benchmark 设计、paper2/paper3 阅读笔记。
 
-## 快速启动
+## 环境配置
+
+推荐直接使用仓库内已经配置好的 GPU 环境：
+
+```text
+D:\SAM\conda_envs\sam_gpu
+```
+
+PowerShell 激活方式：
+
+```powershell
+cd D:\SAM
+.\activate_sam_env.ps1
+```
+
+也可以不激活环境，直接调用环境里的 Python：
+
+```powershell
+D:\SAM\conda_envs\sam_gpu\python.exe --version
+```
+
+常用环境变量已经在 demo 中默认设置；如果你手动运行其他脚本，可以补上：
+
+```powershell
+$env:KMP_DUPLICATE_LIB_OK = "TRUE"
+$env:MPLCONFIGDIR = "D:\SAM\.cache\matplotlib_gpu"
+```
+
+核心依赖包括 PyTorch、FastAPI、Uvicorn、Pillow、NumPy，以及本地 `segment_anything` / `sam2` / `sam3` / `Matcher` 相关代码。模型权重默认放在：
+
+```text
+D:\SAM\assets\checkpoints
+```
+
+## 运行网页 Demo
 
 在 PowerShell 中运行：
 
 ```powershell
 Set-Location D:\SAM\code
-D:\SAM\conda_envs\sam_gpu\python.exe -B demos\medical_sam_click_app.py --host 127.0.0.1 --port 7860
+D:\SAM\conda_envs\sam_gpu\python.exe demos\medical_sam_click_app.py --host 127.0.0.1 --port 7860
 ```
 
 浏览器打开：
@@ -30,8 +64,18 @@ http://127.0.0.1:7860
 如果端口被占用，可以换成其他端口：
 
 ```powershell
-D:\SAM\conda_envs\sam_gpu\python.exe -B demos\medical_sam_click_app.py --host 127.0.0.1 --port 7865
+D:\SAM\conda_envs\sam_gpu\python.exe demos\medical_sam_click_app.py --host 127.0.0.1 --port 7865
 ```
+
+默认启动后先加载轻量入口，切换模型时再按需加载对应权重。当前网页主要用于交互式复现和调试，不建议把页面结果直接当作最终 benchmark。
+
+### Demo 支持的交互
+
+- Image：上传医学图像或选择本地样例。
+- Video：选择 SAM2 视频样例，做首帧提示后传播。
+- Prompt：点击、框选、文本提示。
+- Model：SAM ViT-B、MedSAM ViT-B、SAM2.1 Tiny、Matcher、SAM3。
+- Matcher：支持 reference image / reference mask / reference box 的 one-shot 入口。
 
 ## 目录说明
 
@@ -94,3 +138,4 @@ Matcher reference prompt
 - `conda_envs/`、`assets/checkpoints/`、数据集、模型权重和评测输出默认不提交到 Git。
 - `SAM ViT-B` 和 `SAM2.1 Tiny` 更适合交互 demo，不代表最强基线。
 - 正式 benchmark 前应补充强权重核查，避免低估 SAM/SAM2 家族上限。
+- 如果页面提示 `Failed to fetch`，优先确认后端命令仍在运行、端口没有被占用、以及浏览器访问地址和 `--port` 一致。

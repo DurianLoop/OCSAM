@@ -7,4 +7,4 @@ conda activate D:\SAM\conda_envs\sam_gpu
 
 Write-Host "SAM GPU environment activated: D:\SAM\conda_envs\sam_gpu"
 Write-Host "Use: cd D:\SAM\code"
-Write-Host "Demo: python demos\medical_sam_box_demo.py --limit 4 --max-side 512"
+Write-Host "Demo: python demos\medical_sam_click_app.py --host 127.0.0.1 --port 7860"
