@@ -1,0 +1,13 @@
+# Minimal dependencies for the FastAPI canvas demo.
+# Install PyTorch separately first so you can choose the CUDA version that matches your GPU.
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2
+numpy>=1.23
+pillow>=9
+opencv-python>=4.6
+tqdm>=4.64
+matplotlib>=3.5
+einops>=0.6
+omegaconf>=2.3
+iopath>=0.1.10

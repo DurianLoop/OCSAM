@@ -12,47 +12,93 @@ OCSAM 是一个面向医学图像和视频分割的 SAM 系列复现与实验工
 - Matcher 模式：参考图像 + 可选参考 mask；没有 mask 时使用 reference box 生成矩形支持掩码。
 - 研究文档：Phase 1 复现实验台、Phase 2 benchmark 设计、paper2/paper3 阅读笔记。
 
-## 环境配置
+## 从零配置环境
 
-推荐直接使用仓库内已经配置好的 GPU 环境：
+下面是给新机器/合作者使用的配置流程，不依赖本机已有的 `D:\SAM\conda_envs\sam_gpu`。
+
+### 1. 克隆仓库
+
+```powershell
+git clone https://github.com/DurianLoop/OCSAM.git
+cd OCSAM
+```
+
+如果国内访问 GitHub 较慢，可以先在当前终端设置代理，例如：
+
+```powershell
+$env:HTTP_PROXY = "http://127.0.0.1:7897"
+$env:HTTPS_PROXY = "http://127.0.0.1:7897"
+```
+
+### 2. 创建 Conda 环境
+
+推荐 Python 3.10：
+
+```powershell
+conda create -n ocsam python=3.10 -y
+conda activate ocsam
+```
+
+### 3. 安装 PyTorch
+
+根据自己的 CUDA 版本选择安装命令。CUDA 12.1 示例：
+
+```powershell
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+```
+
+如果没有 NVIDIA GPU，可以先用 CPU 版验证页面是否能启动：
+
+```powershell
+pip install torch torchvision
+```
+
+### 4. 安装 Demo 依赖
+
+```powershell
+pip install -r requirements-demo.txt
+```
+
+基础网页 demo 使用仓库内置的 `code/segment_anything`，不需要额外安装官方 SAM 包。SAM2、SAM3、Matcher 属于可选增强模型；如果要使用这些模型，需要额外准备对应源码目录和依赖。
+
+### 5. 准备权重
+
+至少需要 SAM ViT-B 权重才能启动默认 demo。请把权重放到：
 
 ```text
-D:\SAM\conda_envs\sam_gpu
+assets/checkpoints/sam_vit_b.pth
 ```
 
-PowerShell 激活方式：
+可选权重路径：
 
-```powershell
-cd D:\SAM
-.\activate_sam_env.ps1
-```
+| Model | Expected path |
+| --- | --- |
+| SAM ViT-B | `assets/checkpoints/sam_vit_b.pth` |
+| MedSAM ViT-B | `assets/checkpoints/medsam_vit_b.pth` |
+| SAM2.1 Tiny | `assets/checkpoints/sam2.1_hiera_tiny.pt` |
+| Matcher | `assets/checkpoints/swint_only_sam_many2many.pth` |
+| SAM3 | `assets/checkpoints/sam3_modelscope/sam3.pt` |
 
-也可以不激活环境，直接调用环境里的 Python：
+如果只想先运行 SAM 点击/框选 demo，只准备 `sam_vit_b.pth` 即可。
 
-```powershell
-D:\SAM\conda_envs\sam_gpu\python.exe --version
-```
+### 6. 环境变量
 
-常用环境变量已经在 demo 中默认设置；如果你手动运行其他脚本，可以补上：
+Windows 上建议设置：
 
 ```powershell
 $env:KMP_DUPLICATE_LIB_OK = "TRUE"
-$env:MPLCONFIGDIR = "D:\SAM\.cache\matplotlib_gpu"
+$env:MPLCONFIGDIR = "$PWD\.cache\matplotlib_gpu"
 ```
 
-核心依赖包括 PyTorch、FastAPI、Uvicorn、Pillow、NumPy，以及本地 `segment_anything` / `sam2` / `sam3` / `Matcher` 相关代码。模型权重默认放在：
-
-```text
-D:\SAM\assets\checkpoints
-```
+`medical_sam_click_app.py` 内部也会设置默认值，所以通常不手动设置也能运行。
 
 ## 运行网页 Demo
 
 在 PowerShell 中运行：
 
 ```powershell
-Set-Location D:\SAM\code
-D:\SAM\conda_envs\sam_gpu\python.exe demos\medical_sam_click_app.py --host 127.0.0.1 --port 7860
+cd <OCSAM仓库路径>\code
+python demos\medical_sam_click_app.py --host 127.0.0.1 --port 7860
 ```
 
 浏览器打开：
@@ -64,7 +110,14 @@ http://127.0.0.1:7860
 如果端口被占用，可以换成其他端口：
 
 ```powershell
-D:\SAM\conda_envs\sam_gpu\python.exe demos\medical_sam_click_app.py --host 127.0.0.1 --port 7865
+python demos\medical_sam_click_app.py --host 127.0.0.1 --port 7865
+```
+
+开发机上的完整路径示例：
+
+```powershell
+Set-Location D:\SAM\code
+D:\SAM\conda_envs\sam_gpu\python.exe demos\medical_sam_click_app.py --host 127.0.0.1 --port 7860
 ```
 
 默认启动后先加载轻量入口，切换模型时再按需加载对应权重。当前网页主要用于交互式复现和调试，不建议把页面结果直接当作最终 benchmark。
@@ -85,6 +138,7 @@ D:\SAM\conda_envs\sam_gpu\python.exe demos\medical_sam_click_app.py --host 127.0
 | `code/demos/matcher_oneshot_worker.py` | Matcher one-shot 子进程封装 |
 | `code/adapters/` | SAM、MedSAM、SAM2、SAM3、Matcher 的统一适配器接口声明 |
 | `code/workbench/` | 工作台模型注册、样本扫描和页面数据源 |
+| `requirements-demo.txt` | 外部用户运行网页 demo 的最小依赖 |
 | `assets/img.png` | README 使用的 OCSAM 工作台截图 |
 | `assets/checkpoints/` | 本地模型权重目录，默认不提交到 Git |
 | `docs/phase1_reproduction_workbench.md` | 第一阶段：复现实验台 |
