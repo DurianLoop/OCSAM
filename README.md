@@ -69,17 +69,41 @@ pip install -r requirements-demo.txt
 assets/checkpoints/sam_vit_b.pth
 ```
 
-可选权重路径：
+PowerShell 下载示例：
 
-| Model | Expected path |
-| --- | --- |
-| SAM ViT-B | `assets/checkpoints/sam_vit_b.pth` |
-| MedSAM ViT-B | `assets/checkpoints/medsam_vit_b.pth` |
-| SAM2.1 Tiny | `assets/checkpoints/sam2.1_hiera_tiny.pt` |
-| Matcher | `assets/checkpoints/swint_only_sam_many2many.pth` |
-| SAM3 | `assets/checkpoints/sam3_modelscope/sam3.pt` |
+```powershell
+New-Item -ItemType Directory -Force -Path assets\checkpoints | Out-Null
+curl.exe -L -o assets\checkpoints\sam_vit_b.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+```
+
+可选权重和下载入口：
+
+| Model | Expected path | Download |
+| --- | --- | --- |
+| SAM ViT-B | `assets/checkpoints/sam_vit_b.pth` | [Meta SAM ViT-B](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth) |
+| MedSAM ViT-B | `assets/checkpoints/medsam_vit_b.pth` | [MedSAM Google Drive folder](https://drive.google.com/drive/folders/1ETWmi4AiniJeWOt6HAsYgTjYv_fkgzoN?usp=drive_link) |
+| SAM2.1 Tiny | `assets/checkpoints/sam2.1_hiera_tiny.pt` | [Meta SAM2.1 Tiny](https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt) |
+| SAM3 | `assets/checkpoints/sam3_modelscope/sam3.pt` and `assets/checkpoints/sam3_modelscope/config.json` | [ModelScope facebook/sam3 files](https://www.modelscope.cn/models/facebook/sam3/files) |
+| Matcher SAM-H | `Matcher/models/sam_vit_h_4b8939.pth` | [Meta SAM ViT-H](https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth) |
+| Matcher DINOv2 | `Matcher/models/dinov2_vitl14_pretrain.pth` | [DINOv2 ViT-L/14](https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth) |
+| Matcher Semantic-SAM | `Matcher/models/swint_only_sam_many2many.pth` | [Semantic-SAM release](https://github.com/UX-Decoder/Semantic-SAM/releases/download/checkpoint/swint_only_sam_many2many.pth) |
 
 如果只想先运行 SAM 点击/框选 demo，只准备 `sam_vit_b.pth` 即可。
+
+常用下载命令：
+
+```powershell
+# SAM2.1 Tiny
+curl.exe -L -o assets\checkpoints\sam2.1_hiera_tiny.pt https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
+
+# Matcher required weights
+New-Item -ItemType Directory -Force -Path Matcher\models | Out-Null
+curl.exe -L -o Matcher\models\sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+curl.exe -L -o Matcher\models\dinov2_vitl14_pretrain.pth https://dl.fbaipublicfiles.com/dinov2/dinov2_vitl14/dinov2_vitl14_pretrain.pth
+curl.exe -L -o Matcher\models\swint_only_sam_many2many.pth https://github.com/UX-Decoder/Semantic-SAM/releases/download/checkpoint/swint_only_sam_many2many.pth
+```
+
+MedSAM 和 SAM3 的权重入口不是普通直链，建议手动从上表链接下载，然后按表格路径放置。MedSAM 下载后请把主权重文件命名为 `medsam_vit_b.pth`。
 
 ### 6. 环境变量
 
@@ -145,27 +169,6 @@ D:\SAM\conda_envs\sam_gpu\python.exe demos\medical_sam_click_app.py --host 127.0
 | `docs/phase2_benchmark_plan.md` | 第二阶段第一版 benchmark 草案 |
 | `docs/phase2_reconstructed_from_papers.md` | 阅读 paper2 后重构的 Phase 2 方案 |
 | `docs/papers3/README.md` | 更适合小项目发表的 SAM 医学分割论文中文笔记 |
-
-## 当前推荐研究路线
-
-我们不优先追求“做一个更大的 SAM”，而是聚焦一个更适合 BIBM/MICCAI 风格小项目的方向：
-
-```text
-结构感知自动 prompt + prompt 扰动不确定性 + SAM/MedSAM/SAM2 refinement
-```
-
-核心想法：
-
-1. 从医学图像粗候选区域中自动生成 prompt，例如中心点、网格点、box。
-2. 对 prompt 做扰动，得到多次 SAM 系列模型输出。
-3. 用 mask variance / entropy 构建 prompt-induced uncertainty。
-4. 根据不确定性选择更稳定的 mask，或标记需要人工修正的区域。
-
-更稳的论文表述：
-
-```text
-We improve the reliability and interaction efficiency of SAM-style medical segmentation by structure-aware automatic prompting and prompt-induced uncertainty estimation.
-```
 
 ## 建议下一步
 
