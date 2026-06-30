@@ -45,7 +45,7 @@ if SAM2_ROOT.exists():
 import numpy as np
 import torch
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from PIL import Image
@@ -837,6 +837,11 @@ HTML = r"""<!doctype html>
           <div class="control-block">
             <label for="file">Upload Image</label>
             <input id="file" type="file" accept="image/*">
+            <div class="row action-row">
+              <button id="uploadLocalImage" class="primary" type="button">Upload to local library</button>
+              <button id="clearUploadSelection" type="button">Clear file</button>
+            </div>
+            <p id="uploadLocalImageState" class="muted">Choose a local image to preview it; upload to save it into this demo session.</p>
           </div>
           <div class="control-block">
             <label>Local Examples</label>
@@ -917,7 +922,23 @@ HTML = r"""<!doctype html>
                 <button id="posClick" aria-pressed="true">Foreground</button>
                 <button id="negClick" aria-pressed="false">Background</button>
               </div>
-              <p class="muted">Foreground / background points</p>
+              <div class="row">
+                <div>
+                  <label for="pointRunMode">Point Run Mode</label>
+                  <select id="pointRunMode">
+                    <option value="auto">Auto after each click</option>
+                    <option value="manual">Manual accumulate then Run</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="pointScope">Point Scope</label>
+                  <select id="pointScope">
+                    <option value="cumulative">Cumulative points</option>
+                    <option value="latest">Latest point only</option>
+                  </select>
+                </div>
+              </div>
+              <p class="muted">Foreground / background points. SAM3 defaults to manual cumulative prompts.</p>
             </div>
             <div id="textPanel" hidden>
               <label for="textPrompt">Text Concept</label>
@@ -1026,8 +1047,13 @@ HTML = r"""<!doctype html>
   </div>
   <script>
     const fileInput = document.getElementById("file");
+    const uploadLocalImageButton = document.getElementById("uploadLocalImage");
+    const clearUploadSelectionButton = document.getElementById("clearUploadSelection");
+    const uploadLocalImageState = document.getElementById("uploadLocalImageState");
     const backendInput = document.getElementById("backend");
     const modeInput = document.getElementById("mode");
+    const pointRunModeInput = document.getElementById("pointRunMode");
+    const pointScopeInput = document.getElementById("pointScope");
     const examples = document.getElementById("examples");
     const videos = document.getElementById("videos");
     const statusBox = document.getElementById("status");
@@ -1138,6 +1164,8 @@ HTML = r"""<!doctype html>
       document.querySelectorAll("button, input, select").forEach((el) => {
         el.disabled = active && el.id !== "file";
       });
+      uploadLocalImageButton.disabled = active || !fileInput.files.length;
+      clearUploadSelectionButton.disabled = active || !fileInput.files.length;
       mediaChip.textContent = mediaKind === "video" ? "Video" : "Image";
       mediaChip.className = mediaKind === "video" ? "metric-value state-good" : "metric-value";
       modelChip.textContent = modelLabels[backend] || backend;
@@ -1160,6 +1188,8 @@ HTML = r"""<!doctype html>
       textPrompt.disabled = active || !isPromptAllowed("text");
       posClick.disabled = active || interaction !== "click";
       negClick.disabled = active || interaction !== "click";
+      pointRunModeInput.disabled = active || interaction !== "click";
+      pointScopeInput.disabled = active || interaction !== "click";
       runText.disabled = active || !isPromptAllowed("text");
       modeInput.disabled = active || mediaKind === "video";
       matcherSupportFile.disabled = active;
@@ -1189,7 +1219,8 @@ HTML = r"""<!doctype html>
       }
       runCanvasState.textContent = `${canvas.width} x ${canvas.height}`;
       if (interaction === "click") {
-        runPromptState.textContent = `${points.length} point${points.length === 1 ? "" : "s"}`;
+        const scope = pointScopeInput.value === "latest" ? "latest" : "cumulative";
+        runPromptState.textContent = `${points.length} point${points.length === 1 ? "" : "s"} | ${scope}`;
       } else if (interaction === "box") {
         runPromptState.textContent = currentBox ? "1 box" : "0 boxes";
       } else {
@@ -1213,7 +1244,9 @@ HTML = r"""<!doctype html>
       } else if (interaction === "box") {
         drawerPromptHelp.textContent = "Draw a box around the target region. MedSAM is box-first, so this is the recommended medical prompt path.";
       } else {
-        drawerPromptHelp.textContent = "Left click adds foreground points. Right click adds background points. Images run immediately; videos wait for Run.";
+        drawerPromptHelp.textContent = pointRunModeInput.value === "auto"
+          ? "Left click adds foreground points. Right click adds background points. Each image click runs immediately."
+          : "Left click adds foreground points. Right click adds background points. Press Run after collecting the prompts.";
       }
     }
 
@@ -1363,17 +1396,25 @@ HTML = r"""<!doctype html>
       if (backend === "sam3") {
         textPrompt.placeholder = "e.g. child, truck, cell nucleus, lesion";
         modeInput.value = "standard";
+        pointRunModeInput.value = "manual";
+        pointScopeInput.value = "cumulative";
         if (loaded) {
           setStatus("SAM3 ready. The first request may take 5-15 seconds while the model initializes.", "ok");
         }
       } else if (backend === "sam2") {
         textPrompt.placeholder = "SAM2 image text is not native in this demo; use click or box.";
+        pointRunModeInput.value = "auto";
+        pointScopeInput.value = "cumulative";
         if (interaction === "text") setInteraction("click");
       } else if (backend === "medsam") {
         textPrompt.placeholder = "MedSAM uses box prompts in this workbench.";
+        pointRunModeInput.value = "auto";
+        pointScopeInput.value = "cumulative";
         setInteraction("box", { preserve: interaction === "box" });
       } else {
         textPrompt.placeholder = "e.g. largest object, left lesion, yellow optic disc, nuclei";
+        pointRunModeInput.value = "auto";
+        pointScopeInput.value = "cumulative";
       }
       setInteraction(interaction, { preserve: true });
     }
@@ -1438,6 +1479,44 @@ HTML = r"""<!doctype html>
       };
       img.onerror = () => setStatus("Failed to load image.", "error");
       img.src = url;
+    }
+
+    function loadUploadedImage(sample) {
+      if (!sample || !sample.url) {
+        setStatus("Upload completed, but the server did not return an image URL.", "error");
+        return;
+      }
+      loadImageFromUrl(sample.url);
+      uploadLocalImageState.textContent = `Uploaded: ${sample.name}`;
+    }
+
+    async function uploadSelectedLocalImage() {
+      const file = fileInput.files[0];
+      if (!file) {
+        setStatus("Choose a local image before uploading.", "warn");
+        return;
+      }
+      const form = new FormData();
+      form.append("file", file);
+      setBusy(true);
+      setStatus(`Uploading ${file.name} to local library ...`, "busy");
+      uploadLocalImageState.textContent = `Uploading ${file.name} ...`;
+      try {
+        const response = await fetch("/upload_image", {
+          method: "POST",
+          body: form
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.detail || "Upload failed");
+        await loadExamples();
+        loadUploadedImage(payload.sample);
+        setStatus(`Uploaded and loaded: ${payload.sample.name}`, "ok");
+      } catch (error) {
+        uploadLocalImageState.textContent = "Upload failed.";
+        setStatus(`Upload failed: ${error.message}`, "error");
+      } finally {
+        setBusy(false);
+      }
     }
 
     async function loadVideoExample(item) {
@@ -1517,7 +1596,8 @@ HTML = r"""<!doctype html>
     function currentImagePromptPayload() {
       if (interaction === "click") {
         if (!points.length) throw new Error("Add at least one point before comparing.");
-        return { prompt_type: "click", points };
+        const requestPoints = pointScopeInput.value === "latest" ? points.slice(-1) : points.slice();
+        return { prompt_type: "click", points: requestPoints };
       }
       if (interaction === "box") {
         if (!currentBox) throw new Error("Draw a box before comparing.");
@@ -1566,14 +1646,15 @@ HTML = r"""<!doctype html>
 
     async function runClick() {
       if (!points.length) return;
+      const requestPoints = pointScopeInput.value === "latest" ? points.slice(-1) : points.slice();
       drawPrompts();
       await runSegmentation({
         image: imageToPayload(),
         backend,
         prompt_type: "click",
-        points,
+        points: requestPoints,
         mode: modeInput.value
-      }, `Segmenting ${points.length} click prompt(s) ...`);
+      }, `Segmenting ${requestPoints.length} of ${points.length} click prompt(s) ...`);
     }
 
     async function runBox() {
@@ -1711,10 +1792,24 @@ HTML = r"""<!doctype html>
 
     fileInput.addEventListener("change", () => {
       const file = fileInput.files[0];
-      if (!file) return;
+      if (!file) {
+        uploadLocalImageState.textContent = "Choose a local image to preview it; upload to save it into this demo session.";
+        updateCapabilityUI();
+        return;
+      }
       const reader = new FileReader();
-      reader.onload = () => loadImageFromUrl(reader.result);
+      reader.onload = () => {
+        loadImageFromUrl(reader.result);
+        uploadLocalImageState.textContent = `Previewing ${file.name}. Click upload to save it into Local Examples.`;
+        updateCapabilityUI();
+      };
       reader.readAsDataURL(file);
+    });
+    uploadLocalImageButton.addEventListener("click", uploadSelectedLocalImage);
+    clearUploadSelectionButton.addEventListener("click", () => {
+      fileInput.value = "";
+      uploadLocalImageState.textContent = "Choose a local image to preview it; upload to save it into this demo session.";
+      updateCapabilityUI();
     });
 
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -1730,7 +1825,11 @@ HTML = r"""<!doctype html>
           setStatus(`${points.length} first-frame point${points.length === 1 ? "" : "s"} ready. Press Run to propagate video masks.`, "ok");
           return;
         }
-        runClick();
+        if (pointRunModeInput.value === "auto") {
+          runClick();
+        } else {
+          setStatus(`${points.length} point${points.length === 1 ? "" : "s"} ready. Press Run to segment.`, "ok");
+        }
         return;
       }
       if (interaction === "box") {
@@ -1775,6 +1874,8 @@ HTML = r"""<!doctype html>
     closeDrawer.addEventListener("click", () => openRailPanel("lab"));
     backendInput.addEventListener("change", () => setBackend(backendInput.value));
     modeInput.addEventListener("change", updateCapabilityUI);
+    pointRunModeInput.addEventListener("change", updateCapabilityUI);
+    pointScopeInput.addEventListener("change", updateCapabilityUI);
     resetMode.addEventListener("click", () => setInteraction(firstAllowedPrompt()));
     posClick.addEventListener("click", () => setActivePoint(1));
     negClick.addEventListener("click", () => setActivePoint(0));
@@ -3054,6 +3155,12 @@ def find_video_examples() -> list[Path]:
     return [sample.path for sample in find_video_samples(WORKSPACE_ROOT)]
 
 
+def safe_upload_stem(filename: str) -> str:
+    stem = Path(filename).stem.strip() or "upload"
+    stem = re.sub(r"[^A-Za-z0-9._-]+", "_", stem)
+    return stem[:80] or "upload"
+
+
 def prediction_payload(
     *,
     overlay_key: str,
@@ -3075,6 +3182,9 @@ def create_app(server: PromptSamServer) -> FastAPI:
     video_samples = find_video_samples(WORKSPACE_ROOT)
     examples = [sample.path for sample in image_samples]
     video_examples = [sample.path for sample in video_samples]
+    upload_dir = REPO_ROOT / "demo_outputs" / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    uploaded_samples: list[SampleEntry] = []
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
@@ -3090,11 +3200,16 @@ def create_app(server: PromptSamServer) -> FastAPI:
 
     @app.get("/examples")
     def list_examples() -> dict[str, Any]:
+        uploaded_examples = [
+            sample.to_dict(url=f"/uploaded/{i}")
+            for i, sample in enumerate(uploaded_samples)
+        ]
         return {
             "examples": [
                 sample.to_dict(url=f"/example/{i}")
                 for i, sample in enumerate(image_samples)
-            ]
+            ] + uploaded_examples,
+            "uploaded_examples": uploaded_examples,
         }
 
     @app.get("/example/{example_id}")
@@ -3102,6 +3217,38 @@ def create_app(server: PromptSamServer) -> FastAPI:
         if example_id < 0 or example_id >= len(examples):
             raise HTTPException(status_code=404, detail="example not found")
         return FileResponse(examples[example_id])
+
+    @app.post("/upload_image")
+    async def upload_image(file: UploadFile = File(...)) -> dict[str, Any]:
+        raw = await file.read()
+        if not raw:
+            raise HTTPException(status_code=400, detail="empty upload")
+        if len(raw) > 25 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="image is larger than 25 MB")
+        try:
+            image = Image.open(io.BytesIO(raw)).convert("RGB")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="uploaded file is not a readable image") from exc
+        digest = hashlib.sha1(raw).hexdigest()[:10]
+        filename = f"{safe_upload_stem(file.filename or 'upload')}_{digest}.png"
+        out_path = upload_dir / filename
+        image.save(out_path)
+        sample = SampleEntry(
+            id=len(uploaded_samples),
+            name=filename,
+            path=out_path,
+            dataset="Uploaded",
+            scene="user local upload",
+            difficulty="mixed",
+        )
+        uploaded_samples.append(sample)
+        return {"sample": sample.to_dict(url=f"/uploaded/{sample.id}")}
+
+    @app.get("/uploaded/{upload_id}")
+    def get_uploaded(upload_id: int) -> FileResponse:
+        if upload_id < 0 or upload_id >= len(uploaded_samples):
+            raise HTTPException(status_code=404, detail="uploaded image not found")
+        return FileResponse(uploaded_samples[upload_id].path)
 
     @app.get("/videos")
     def list_videos() -> dict[str, Any]:
